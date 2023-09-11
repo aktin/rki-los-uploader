@@ -25,6 +25,7 @@ Calculator reads UTC Timezones and converts them into current timezone for calcu
 1. Daten aus den Dateien einlesen
 2. Daten prüfen ob nicht leer (nicht notwendig durch mysql?)
 3. Daten zusammenführen zu einer Tabelle
+4. Neue SPalte "Klinik" mit kliniknummer aus dateinamen
 ### Daten aufbereiten
 4. Daten und Uhrzeiten nach zeitzonen umformatieren zur aktuellen Zeitzone (wird mit timestamp beim einlesen automatisch gemacht?)
 ### Spalte für Jahr, Kalenderwoche und Kalenderwoche Jahr hinzufügen
@@ -40,9 +41,12 @@ Calculator reads UTC Timezones and converts them into current timezone for calcu
 11. Trage den timestamp ein aus "aufnahme_ts" und "triage_ts" der früher ist
 12. wenn triage_ts null ist, aufnahme_ts direkt nehmen
 ### LOS spalte erstellen
-13. 
+13. Differenz zwischen "entlassungs_ts" und "ersterZeitpunkt" errechnen
 
 
+
+
+spalte Vergleich ausgelassen weil quasi dasselbe wie ersterZ
 
 
 
