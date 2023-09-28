@@ -1,16 +1,22 @@
+import urllib
+
 import requests
 import re
 import zipfile
+import xml.etree.ElementTree as et
+import logging
 
 headers = {'Authorization': 'Bearer xxxAdmin1234'}
 zip_name = 'export_data_cache.zip'
 
 
-def request_ids_from_broker():
-    url = "https://aktin-test-broker.klinikum.rwth-aachen.de/broker/request"
-    response = requests.request("GET", url, headers=headers)
+def request_ids_by_tag_from_broker(tag='pandemieradar'):
+    url = "https://aktin-test-broker.klinikum.rwth-aachen.de/broker/request/filtered/"
+    url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
+    response = requests.get(url, headers=headers)
 
-    return response.text
+    list_request_id = [element.get('id') for element in et.fromstring(response.content)]
+    return list_request_id
 
 
 def extract_request_ids(raw_data: str):
@@ -53,7 +59,7 @@ def get_case_data_from_zip(zip_dir, zip_name):
 
 # gets case data from export with the highest id value
 def get_latest_case_data():
-    _id_list_raw = request_ids_from_broker()
+    _id_list_raw = request_ids_by_tag_from_broker()
     _id_list = extract_request_ids(_id_list_raw)
     _id = max(_id_list)
 
