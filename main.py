@@ -1,5 +1,6 @@
 import urllib
 
+import subprocess
 import requests
 import re
 import zipfile
@@ -10,13 +11,13 @@ headers = {'Authorization': 'Bearer xxxAdmin1234'}
 zip_name = 'export_data_cache.zip'
 
 
-def request_ids_by_tag_from_broker(tag='pandemieradar'):
+def request_highest_id_by_tag_from_broker(tag='pandemieradar') -> list:
     url = "https://aktin-test-broker.klinikum.rwth-aachen.de/broker/request/filtered/"
     url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
     response = requests.get(url, headers=headers)
 
     list_request_id = [element.get('id') for element in et.fromstring(response.content)]
-    return list_request_id
+    return max(list_request_id)
 
 
 def extract_request_ids(raw_data: str):
@@ -59,16 +60,34 @@ def get_case_data_from_zip(zip_dir, zip_name):
 
 # gets case data from export with the highest id value
 def get_latest_case_data():
-    _id_list_raw = request_ids_by_tag_from_broker()
-    _id_list = extract_request_ids(_id_list_raw)
-    _id = max(_id_list)
+    _id = request_highest_id_by_tag_from_broker()
 
     zip_dir, zip_name = create_zip_from_id(_id=_id, dest_url=f'cache/exports/')
     get_case_data_from_zip(zip_dir, zip_name)
 
+
+def execute_r_file():
+    r_script_path = "C:\\Users\\whoy\\PycharmProjects\\pythonProject5\\libraries\\LOS_short.R"
+    result = subprocess.run(["Rscript", r_script_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    # Check the result
+    if result.returncode == 0:
+        print("R script executed successfully.")
+        print("Output:")
+        print(result.stdout)
+    else:
+        print("Error executing R script:")
+        print("Exit code:", result.returncode)
+        print("Error message:")
+        print(result.stderr)
+
+
+
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    get_latest_case_data()
+    # get_latest_case_data()
+    execute_r_file()
 
 
 # class TestClass(unittest.TestCase):
