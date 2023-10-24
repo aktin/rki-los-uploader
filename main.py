@@ -1,3 +1,5 @@
+import os
+import shutil
 import urllib
 
 import subprocess
@@ -6,6 +8,8 @@ import re
 import zipfile
 import xml.etree.ElementTree as et
 import logging
+
+from libraries.sftp_export import BrokerRequestResultManager
 
 headers = {'Authorization': 'Bearer xxxAdmin1234'}
 zip_name = 'export_data_cache.zip'
@@ -17,6 +21,8 @@ def request_highest_id_by_tag_from_broker(tag='pandemieradar') -> list:
     response = requests.get(url, headers=headers)
 
     list_request_id = [element.get('id') for element in et.fromstring(response.content)]
+    if len(list_request_id) < 1:
+        raise Exception(f"no element with tag:\"{tag}\" was found!")
     return max(list_request_id)
 
 
@@ -24,8 +30,18 @@ def extract_request_ids(raw_data: str):
     ids = [int(match.split('<request id="')[0]) for match in re.findall(r'<request id="(\d+)">', raw_data)]
     return ids
 
+def delete_contents_of_dir(dir):
+    try:
+        # Use shutil.rmtree to remove all files and subdirectories within the directory
+        shutil.rmtree(dir)
+        # Recreate the directory if needed
+        os.mkdir(dir)
+        print(f"Contents of '{dir}' have been deleted.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 def create_zip_from_id(_id: int, dest_url):
+    delete_contents_of_dir(dest_url)
     # get resource identifier
     uuid_request_url = f"https://aktin-test-broker.klinikum.rwth-aachen.de/broker/export/request-bundle/{_id}"
     uuid = requests.request("POST", url=uuid_request_url, headers=headers).text
@@ -43,7 +59,7 @@ def create_zip_from_id(_id: int, dest_url):
 
 
 def get_case_data_from_zip(zip_dir, zip_name):
-    # open export zip file
+    # open export zip file and extract all result sets from each hospital to seperated zip archives
     with zipfile.ZipFile(f"{zip_dir}/{zip_name}") as zf:
         for filename in zf.namelist():
             match = re.findall(r'(\d+)_result.zip', filename)
@@ -60,7 +76,7 @@ def get_case_data_from_zip(zip_dir, zip_name):
 
 # gets case data from export with the highest id value
 def get_latest_case_data():
-    _id = request_highest_id_by_tag_from_broker()
+    _id = request_highest_id_by_tag_from_broker('LOS')
 
     zip_dir, zip_name = create_zip_from_id(_id=_id, dest_url=f'cache/exports/')
     get_case_data_from_zip(zip_dir, zip_name)
@@ -86,8 +102,8 @@ def execute_r_file():
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    # get_latest_case_data()
-    execute_r_file()
+    get_latest_case_data()
+    # execute_r_file()
 
 
 # class TestClass(unittest.TestCase):
