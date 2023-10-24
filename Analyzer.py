@@ -4,7 +4,6 @@ from pandas import DataFrame
 
 
 def calc_los(broker_export_path):
-
     # returns a list of filenames that contain results from a export
     def get_all_result_sets():
         exports_url = 'cache/exports'
@@ -15,23 +14,30 @@ def calc_los(broker_export_path):
         data_all = []
         header_row = ""
         for filename in result_set_names:
-            directory = broker_export_path+"/"+filename
+            directory = broker_export_path + "/" + filename
             with open(directory, 'r') as datafile:
                 rows = datafile.read().split('\n')
 
-                data = []
+                data = []  # data from one hospital
                 for row in rows:
                     row_list = row.split('	')
                     if header_row == "" and 'entlassung_ts' in row:
                         header_row = dict.fromkeys(row_list)
+                        header_row.update({"klinik": None})
                     else:
+                        row_list.append(filename.split("_")[0])
                         data.append(row_list)
 
-                if len(header_row) < 1:
-                    raise Exception(
-                        f"column \"entlassung_ts\" is required in case data: \"{directory}\", but was not found!")
+            data_all.extend(data)  # TODO check if headers of all data chunks are the same
 
-            data_all.extend(data)   # TODO check if headers of all data chunks are the same
+            if len(header_row) < 1:
+                raise Exception(
+                    f"column \"entlassung_ts\" is required in case data: \"{directory}\", but was not found!")
+
+            if len(data_all) < 1:
+                raise Exception(
+                    f"do data was found in case data: {directory}")
+
         return header_row, data_all
 
     # create dataframe with case data from a case data file

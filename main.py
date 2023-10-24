@@ -73,7 +73,7 @@ def get_case_data_from_zip(zip_dir, zip_name):
                     hospital_num = filename.split("_")[0]
                     # Todo handle keyerror when no case data exists
                     result_dir.extract("case_data.txt", zip_dir)
-                    os.rename(f"{zip_dir}/case_data.txt", f"{zip_dir}/case_data_{hospital_num}.txt")
+                    os.rename(f"{zip_dir}/case_data.txt", f"{zip_dir}/{hospital_num}_case_data.txt")
 
 
 
