@@ -70,13 +70,16 @@ def get_case_data_from_zip(zip_dir, zip_name):
 
                 # ... extract the case_data.txt from it
                 with zipfile.ZipFile(f"{zip_dir}{filename}") as result_dir:
+                    hospital_num = filename.split("_")[0]
                     # Todo handle keyerror when no case data exists
-                    result_dir.extract('case_data.txt', zip_dir)
+                    result_dir.extract("case_data.txt", zip_dir)
+                    os.rename(f"{zip_dir}/case_data.txt", f"{zip_dir}/case_data_{hospital_num}.txt")
+
 
 
 # gets case data from export with the highest id value
 def get_latest_case_data():
-    _id = request_highest_id_by_tag_from_broker('LOS')
+    _id = request_highest_id_by_tag_from_broker('LOS')  # TODO for working version delete 'LOS'
 
     zip_dir, zip_name = create_zip_from_id(_id=_id, dest_url=f'cache/exports/')
     get_case_data_from_zip(zip_dir, zip_name)
