@@ -1,6 +1,8 @@
 import os
 
 from pandas import DataFrame
+import datetime
+import pytz
 
 
 def calc_los(broker_export_path):
@@ -10,6 +12,7 @@ def calc_los(broker_export_path):
         result_sets = [f for f in os.listdir(exports_url) if f.__contains__("case_data")]
         return result_sets
 
+    # This function reads all case_data files and adds them together
     def read_data_all(result_set_names):
         data_all = []
         header_row = ""
@@ -38,12 +41,30 @@ def calc_los(broker_export_path):
                 raise Exception(
                     f"do data was found in case data: {directory}")
 
+
         return header_row, data_all
+
+
+    def apply_conversions():
+        def convert_time(timestamp: str):
+            try:
+                time_format = "%Y-%m-%dT%H:%M:%SZ"
+                timestamp_obj = datetime.datetime.strptime(timestamp, time_format)
+                # TODO set timezone to current
+                return timestamp_obj
+            except ValueError:
+                raise ValueError(f"A date could not be converted to Datetime: \"{timestamp}\" unsing format \"{time_format}\"")
+
+        for col in case_data.columns:
+            if col.__contains__("_ts"):
+                case_data[col] = case_data[col].apply(convert_time)
+
 
     # create dataframe with case data from a case data file
     sets = get_all_result_sets()
     columns, data = read_data_all(sets)
-    case_data = DataFrame(data=data, columns=columns)
+    case_data = DataFrame(data=data, columns=columns).dropna()
+    apply_conversions()
 
     return
 
