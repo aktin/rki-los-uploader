@@ -68,19 +68,34 @@ def calc_los(broker_export_path):
             else:
                 raise ValueError(f"case_data is missing column: {_col_name}!")
 
-        def create_column_ersterZ():
-            ersterZ = np.zeros(len(case_data))
-            case_data['ersterZ'] = ersterZ
+        def create_column_ersterZ_and_vergleich():  # Todo rename or split function
+            case_data['ersterZ'] = np.zeros(len(case_data))
+            case_data['vergleich'] = np.zeros(len(case_data))
+            case_data['erster Zeitpunkt'] = np.empty(len(case_data))
+            case_data['LOS'] = np.empty(len(case_data))
+            # TODO vergleich und ersterZ sind quasi identisch
+
             for index, row in case_data.iterrows():
-                if row['aufnahme_ts'] > row['triage_ts']:
-                    row["ersterZ"] = 1
+                if row['triage_ts'] is None or row['aufnahme_ts'] <= row['triage_ts']:
+                    case_data.at[index, 'erster Zeitpunkt'] = row['aufnahme_ts']
+                elif row['aufnahme_ts'] > row['triage_ts']:
+                    case_data.at[index, 'ersterZ'] = 1
+                    case_data.at[index, 'vergleich'] = 1
+                    case_data.at[index, 'erster Zeitpunkt'] = row['triage_ts']
+
+
+                time_diff = case_data.at[index, 'entlassung_ts'] - case_data.at[index, 'erster Zeitpunkt']
+                time_diff_in_mins = time_diff.total_seconds()/60
+                case_data.at[index, 'LOS'] = time_diff_in_mins
+
+
 
         for col in case_data.columns:
             if col.__contains__("_ts"):
                 case_data[col] = case_data[col].apply(convert_time)
 
         create_columns_year_calweek_calweekyear()
-        create_column_ersterZ()
+        create_column_ersterZ_and_vergleich()
 
     # create dataframe with case data from a case data file
     sets = get_all_result_sets()
