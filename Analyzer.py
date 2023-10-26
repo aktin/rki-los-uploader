@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 from pandas import DataFrame
 import datetime
 import pytz
@@ -41,9 +42,7 @@ def calc_los(broker_export_path):
                 raise Exception(
                     f"do data was found in case data: {directory}")
 
-
         return header_row, data_all
-
 
     def apply_conversions():
         def convert_time(timestamp: str):
@@ -53,12 +52,35 @@ def calc_los(broker_export_path):
                 # TODO set timezone to current
                 return timestamp_obj
             except ValueError:
-                raise ValueError(f"A date could not be converted to Datetime: \"{timestamp}\" unsing format \"{time_format}\"")
+                raise ValueError(
+                    f"A date could not be converted to Datetime: \"{timestamp}\" unsing format \"{time_format}\"")
+
+        def create_columns_year_calweek_calweekyear():
+            _col_name = 'aufnahme_ts'
+            years_lst = case_data.get(_col_name)
+            if years_lst is not None:  # check if case_data has a column {_col_name}
+                case_data['jahr'] = years_lst.apply(
+                    lambda date: date.year)  # year from date
+                case_data['KW'] = years_lst.apply(
+                    lambda date: date.strftime("%V"))  # calendar week from date
+                case_data['kalenderwoche_jahr'] = years_lst.apply(
+                    lambda date: date.strftime("%G"))  # year from calendar week
+            else:
+                raise ValueError(f"case_data is missing column: {_col_name}!")
+
+        def create_column_ersterZ():
+            ersterZ = np.zeros(len(case_data))
+            case_data['ersterZ'] = ersterZ
+            for index, row in case_data.iterrows():
+                if row['aufnahme_ts'] > row['triage_ts']:
+                    row["ersterZ"] = 1
 
         for col in case_data.columns:
             if col.__contains__("_ts"):
                 case_data[col] = case_data[col].apply(convert_time)
 
+        create_columns_year_calweek_calweekyear()
+        create_column_ersterZ()
 
     # create dataframe with case data from a case data file
     sets = get_all_result_sets()
