@@ -119,8 +119,9 @@ def calc_los(broker_export_path):
 
 
 def generate_anzahl_faelle(case_data_df: DataFrame):
-    case_count_df = DataFrame(case_data_df['klinik'].value_counts())
-    case_count_df.columns = ['klinik', 'Freq']
+    columns = ['Freq', 'klinik']
+    _data = np.transpose([case_data_df['klinik'].value_counts().tolist(), case_data_df['klinik'].value_counts().keys()])
+    case_count_df = DataFrame(columns=columns, data=_data)
     return case_count_df
 
 
