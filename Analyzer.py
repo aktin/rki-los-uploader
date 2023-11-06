@@ -16,9 +16,10 @@ def calc_los(broker_export_path):
 
         # This function reads all case_data files and adds them together
 
-    def read_data_all(result_set_names):
+    def read_data_all():
         data_all = []
         header_row = ""
+        result_set_names = [f for f in os.listdir(broker_export_path) if f.__contains__("case_data")]
         for filename in result_set_names:
             directory = broker_export_path + "/" + filename
             with open(directory, 'r') as datafile:
@@ -57,6 +58,7 @@ def calc_los(broker_export_path):
 
         return header_row, data_all
 
+    # This function is used when the case_data_df is created and adds supplementary data and conversions
     def apply_conversions():
         def convert_time(timestamp: str):
             try:
@@ -110,14 +112,13 @@ def calc_los(broker_export_path):
         create_column_ersterZ_and_vergleich()
 
     # create dataframe with case data from a case data file
-    sets = get_all_result_sets()
-    columns, data = read_data_all(sets)
+    columns, data = read_data_all()
     case_data_df = DataFrame(data=data, columns=columns).dropna()
     apply_conversions()
 
     return case_data_df
 
-
+# creates a new table with the clinic numbers and the numbers of their entries in "case_data_df"
 def generate_anzahl_faelle(case_data_df: DataFrame):
     columns = ['Freq', 'klinik']
     _data = np.transpose([case_data_df['klinik'].value_counts().tolist(), case_data_df['klinik'].value_counts().keys()])
