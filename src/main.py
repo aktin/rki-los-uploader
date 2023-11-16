@@ -92,7 +92,7 @@ def get_case_data_from_zip(zip_dir, zip_name):
 def get_latest_case_data():
     _id = request_highest_id_by_tag_from_broker('LOS')  # TODO for working version delete 'LOS'
 
-    zip_dir = f'cache/exports/'
+    zip_dir = f'../cache/exports/'
     zip_name2 = download_broker_export_as_zip(_id=_id, dest_url=zip_dir)
     get_case_data_from_zip(zip_dir, zip_name2)
 

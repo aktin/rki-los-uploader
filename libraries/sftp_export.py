@@ -63,7 +63,7 @@ class BrokerRequestResultManager:
             raise SystemExit(f'HTTP error occurred: {err}')
         except requests.exceptions.RequestException as err:
             raise SystemExit(f'An ambiguous error occurred: {err}')
-            
+
     def __append_to_broker_url(self, *items: str) -> str:
         url = self.__broker_url
         for item in items:
@@ -74,7 +74,8 @@ class BrokerRequestResultManager:
         """
         HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
         """
-        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive', 'Accept': mediatype}
+        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
+                'Accept': mediatype}
 
     def get_request_result(self, id_request: str) -> requests.models.Response:
         """
@@ -115,7 +116,8 @@ class BrokerRequestResultManager:
     def __get_request_ids_with_tag(self, tag: str) -> list:
         logging.info('Checking for requests with tag %s', tag)
         url = self.__append_to_broker_url('broker', 'request', 'filtered')
-        url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
+        url = '?'.join([url, urllib.parse.urlencode(
+            {'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
         list_request_id = [element.get('id') for element in et.fromstring(response.content)]
@@ -159,7 +161,8 @@ class SftpFileManager:
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.__sftp_host, username=self.__sftp_username, password=self.__sftp_password, timeout=self.__sftp_timeout)
+        ssh.connect(self.__sftp_host, username=self.__sftp_username, password=self.__sftp_password,
+                    timeout=self.__sftp_timeout)
         return ssh.open_sftp()
 
     def upload_request_result(self, response: requests.models.Response):
@@ -285,7 +288,8 @@ class StatusXmlManager:
         set_new = set(dict_broker.keys()).difference(set(dict_xml.keys()))
         set_update = self.__get_requests_to_update(dict_broker, dict_xml)
         set_delete = self.__get_requests_to_delete(dict_broker, dict_xml)
-        logging.info(f"{len(set_new)} new requests, {len(set_update)} requests to update, {len(set_delete)} requests to delete")
+        logging.info(
+            f"{len(set_new)} new requests, {len(set_update)} requests to update, {len(set_delete)} requests to delete")
         return set_new, set_update, set_delete
 
     def __get_requests_to_update(self, dict_broker: dict, dict_xml: dict) -> set:
@@ -375,7 +379,8 @@ class Manager:
         """
         dict_broker = self.__broker.get_tagged_requests_completion_as_dict()
         dict_xml = self.__xml.get_request_completion_as_dict()
-        set_new, set_update, set_delete = self.__xml.compare_request_completion_between_broker_and_sftp(dict_broker, dict_xml)
+        set_new, set_update, set_delete = self.__xml.compare_request_completion_between_broker_and_sftp(dict_broker,
+                                                                                                        dict_xml)
 
         for id_request in set_delete:
             self.__sftp.delete_request_result(id_request)
@@ -390,7 +395,8 @@ class Manager:
 
 def main(path_toml: str):
     try:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', handlers=[logging.StreamHandler()])
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
+                            handlers=[logging.StreamHandler()])
         manager = Manager(path_toml)
         manager.upload_tagged_results_to_sftp()
     except Exception as e:
@@ -401,8 +407,8 @@ def main(path_toml: str):
 
 
 if __name__ == '__main__':
-    # if len(sys.argv) < 2:
-    #     raise SystemExit('path to config TOML is missing!')
-    # main(sys.argv[1])
-    rm = BrokerRequestResultManager()
-    rm.__get_request_ids_with_tag(__tag_requests)
+    if len(sys.argv) < 2:
+        raise SystemExit('path to config TOML is missing!')
+    main(sys.argv[1])
+    # rm = BrokerRequestResultManager()
+    # rm.__get_request_ids_with_tag(__tag_requests)

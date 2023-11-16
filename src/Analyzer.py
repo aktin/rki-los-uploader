@@ -8,7 +8,7 @@ import pytz
 
 
 def calc_los(broker_export_path):
-    # returns a list of filenames that contain results from a export
+    # returns a list of filenames that contain results from an export
     def get_all_result_sets():
         exports_url = 'cache/exports'
         result_sets = [f for f in os.listdir(exports_url) if f.__contains__("case_data")]
@@ -28,10 +28,10 @@ def calc_los(broker_export_path):
                 _data = []  # data from one hospital
 
                 if 'entlassung_ts' in rows[0]:
-                    if header_row == "":    # save column data
+                    if header_row == "":  # save column data
                         header_row = dict.fromkeys(rows[0].split('	'))
                         header_row.update({"klinik": None})
-                    else:   # check if column data of different origins are the same and can be merged together
+                    else:  # check if column data of different origins are the same and can be merged together
                         _header_row = dict.fromkeys(rows[0].split('	'))
                         _header_row.update({"klinik": None})
                         if _header_row != header_row:
@@ -67,7 +67,8 @@ def calc_los(broker_export_path):
                 # TODO set timezone to current
                 return timestamp_obj
             except ValueError:
-                print(f"A date could not be converted to Datetime: \"{timestamp}\" unsing format \"{time_format.__str__()}\"")
+                print(
+                    f"A date could not be converted to Datetime: \"{timestamp}\" unsing format \"{time_format.__str__()}\"")
                 return None
 
         def create_columns_year_calweek_calweekyear():
@@ -98,7 +99,6 @@ def calc_los(broker_export_path):
                     case_data_df.at[index, 'vergleich'] = 1
                     case_data_df.at[index, 'erster Zeitpunkt'] = row['triage_ts']
 
-
                 time_diff = case_data_df.at[index, 'entlassung_ts'] - case_data_df.at[index, 'erster Zeitpunkt']
 
                 time_diff_in_mins = time_diff.total_seconds() / 60
@@ -118,6 +118,7 @@ def calc_los(broker_export_path):
 
     return case_data_df
 
+
 # creates a new table with the clinic numbers and the numbers of their entries in "case_data_df"
 def generate_anzahl_faelle(case_data_df: DataFrame):
     columns = ['Freq', 'klinik']
@@ -127,6 +128,6 @@ def generate_anzahl_faelle(case_data_df: DataFrame):
 
 
 if __name__ == "__main__":
-    case_data_df = calc_los("cache/exports")
+    case_data_df = calc_los("../cache/exports")
     case_count_df = generate_anzahl_faelle(case_data_df)
     print()

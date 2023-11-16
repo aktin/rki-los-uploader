@@ -139,5 +139,5 @@ zeitraum <- zeitraum[, col_order]
 zeitraum<-zeitraum %>% 
   mutate_if(is.numeric, round, digits = 2)
 KW_22_25_2023<-zeitraum
-write.table(KW_22_25_2023,file = paste0(home_dir_windows,"\\OneDrive - Uniklinik RWTH Aachen\\Desktop\\pandemieradar_sql\\LOS_2023-W22_to_2023-W25_20230629-094752.csv"),dec=".",sep = ",",row.names = FALSE,quote=FALSE)
+write.table(KW_22_25_2023, file = paste0(home_dir_windows,"\\OneDrive - Uniklinik RWTH Aachen\\Desktop\\pandemieradar_sql\\LOS_2023-W22_to_2023-W25_20230629-094752.csv"), dec= "../../libraries", sep = ",", row.names = FALSE, quote=FALSE)
 
