@@ -2,10 +2,12 @@
 import logging
 import os
 import re
-import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
 
 import paramiko
 import requests
@@ -229,13 +231,33 @@ class BrokerRequestResultManager:
 
 class OpenSSLFileEncryption:
     def __init__(self):
-        self.__path_key_encryption = os.environ['SECURITY.PATH_ENCRYPTION_KEY']
+        self.__path_key_encryption = b'os.environ["SECURITY.PATH_ENCRYPTION_KEY"]'
         self.__working_dir = os.environ['MISC.WORKING_DIR']
 
+    # def __encrypt_file(self, path_in, path_out):
+    #     with open(self.__path_key_encryption, 'rb') as key:
+    #         command = f"openssl enc -aes-256-cbc -salt -in {path_in} -out {path_out} -k {key}"
+    #         subprocess.run(command, shell=True)
+
     def __encrypt_file(self, path_in, path_out):
-        with open(self.__path_key_encryption, 'rb') as key:
-            command = f"openssl enc -aes-256-cbc -salt -in {path_in} -out {path_out} -k {key}"
-            subprocess.run(command, shell=True)
+        with open(path_in, 'rb') as input_file:
+            plaintext = input_file.read()
+            ciphertext = self.__xor_encrypt(plaintext, self.__path_key_encryption)
+
+            with open(path_out, 'wb') as output_file:
+                # output_file.write(iv)
+                output_file.write(ciphertext)
+
+    @staticmethod
+    def __xor_encrypt(plaintext, key):
+        iv = os.urandom(16)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        padder = padding.PKCS7(algorithms.AES.block_size).padder()
+        padded_plaintext = padder.update(plaintext) + padder.finalize()
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(padded_plaintext) + encryptor.finalize()
+
+        return iv + ciphertext
 
     def __get_file_path(self, filename: str) -> (str, str):
         enc_filename = filename + "_enc"
