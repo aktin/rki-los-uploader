@@ -19,9 +19,8 @@ class Manager:
 
     def __init__(self, path_toml: str):
         self.__verify_and_load_toml(path_toml)
-        # self.__broker = BrokerRequestResultManager()
-        # self.__sftp = SftpFileManager()
-        # self.__xml = StatusXmlManager()
+        self.__broker = BrokerRequestResultManager()
+        self.__sftp = SftpFileManager()
 
     def __flatten_dict(self, d, parent_key='', sep='.'):
         items = []
@@ -66,13 +65,7 @@ class SftpFileManager:
         self.__sftp_password = os.environ['SFTP.PASSWORD']
         self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
         self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
-        self.encryptor = OpenSSLFileEncryption
         self.__connection = self.__connect_to_sftp()
-
-    # def __init_encryptor(self, path_file, path_enc_file):
-    #     with open(self.__path_key_encryption, 'rb') as key:
-    #         command = f"openssl enc -aes-256-cbc -salt -in {path_file} -out {path_enc_file} -k {key}"
-    #         subprocess.run(command, shell=True)
 
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
@@ -191,17 +184,6 @@ class BrokerRequestResultManager:
         response.raise_for_status()
         return response
 
-    def get_tagged_requests_completion_as_dict(self) -> dict:
-        """
-        Get the completion status of requests tagged with a specific tag.
-        """
-        list_requests = self.__get_request_ids_with_tag(self.__tag_requests)
-        dict_broker = {}
-        for id_request in list_requests:
-            completion = self.__get_request_result_completion(id_request)
-            dict_broker[id_request] = str(completion)
-        return dict_broker
-
     def __get_request_ids_with_tag(self, tag: str) -> list:
         logging.info('Checking for requests with tag %s', tag)
         url = self.__append_to_broker_url('broker', 'request', 'filtered')
@@ -212,42 +194,6 @@ class BrokerRequestResultManager:
         list_request_id = [element.get('id') for element in et.fromstring(response.content)]
         logging.info('%d requests found', len(list_request_id))
         return list_request_id
-
-    def __get_request_result_completion(self, id_request: str) -> float:
-        """
-        Get the completion status of a given broker request.
-        Computes the result completion by counting connected nodes and the number of nodes that completed the request.
-        Returns the completion percentage (rounded to 2 decimal places) or 0.0 if no nodes found.
-        """
-        url = self.__append_to_broker_url('broker', 'request', id_request, 'status')
-        response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-        root = et.fromstring(response.content)
-        num_nodes = len(root.findall('.//{http://aktin.org/ns/exchange}node'))
-        num_completed = len(root.findall('.//{http://aktin.org/ns/exchange}completed'))
-        return round(num_completed / num_nodes, 2) if num_nodes else 0.0
-
-
-class OpenSSLFileEncryption:
-    def __init__(self):
-        self.__path_key_encryption = os.environ['SECURITY.PATH_ENCRYPTION_KEY']
-        self.__working_dir = os.environ['MISC.WORKING_DIR']
-
-    def __encrypt_file(self, path_in, path_out):
-        with open(self.__path_key_encryption, 'rb') as key:
-            command = f"openssl enc -aes-256-cbc -salt -in {path_in} -out {path_out} -k {key}"
-            subprocess.run(command, shell=True)
-
-    def __get_file_path(self, filename: str) -> (str, str):
-        enc_filename = filename + "_enc"
-        tmp_path_file = os.path.join(self.__working_dir, filename)
-        tmp_path_enc_file = os.path.join(self.__working_dir, enc_filename)
-        return tmp_path_file, tmp_path_enc_file
-
-    def get_enc_file_path(self, filename: str) -> str:
-        path_in, path_out = self.__get_file_path(filename)
-        self.__encrypt_file(path_in, path_out)
-        os.remove(path_in)
-        return path_out
 
 
 def main(path_toml: str):
