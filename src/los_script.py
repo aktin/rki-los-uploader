@@ -68,13 +68,7 @@ class SftpFileManager:
         self.__sftp_password = os.environ['SFTP.PASSWORD']
         self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
         self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
-        self.encryptor = OpenSSLFileEncryption
         self.__connection = self.__connect_to_sftp()
-
-    # def __init_encryptor(self, path_file, path_enc_file):
-    #     with open(self.__path_key_encryption, 'rb') as key:
-    #         command = f"openssl enc -aes-256-cbc -salt -in {path_file} -out {path_enc_file} -k {key}"
-    #         subprocess.run(command, shell=True)
 
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
@@ -143,30 +137,30 @@ class BrokerRequestResultManager:
         self.__tag_requests = os.environ['REQUESTS.TAG']
         self.__check_broker_server_availability()
 
-    def __check_broker_server_availability(self):
-        url = self.__append_to_broker_url('broker', 'status')
-        try:
-            response = requests.head(url, timeout=self.__timeout)
-            response.raise_for_status()
-        except requests.exceptions.Timeout:
-            raise SystemExit('Connection to AKTIN Broker timed out')
-        except requests.exceptions.HTTPError as err:
-            raise SystemExit(f'HTTP error occurred: {err}')
-        except requests.exceptions.RequestException as err:
-            raise SystemExit(f'An ambiguous error occurred: {err}')
-
-    def __append_to_broker_url(self, *items: str) -> str:
-        url = self.__broker_url
-        for item in items:
-            url = f'{url}/{item}'
-        return url
-
-    def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
-        """
-        HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
-        """
-        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
-                'Accept': mediatype}
+    # def __check_broker_server_availability(self):
+    #     url = self.__append_to_broker_url('broker', 'status')
+    #     try:
+    #         response = requests.head(url, timeout=self.__timeout)
+    #         response.raise_for_status()
+    #     except requests.exceptions.Timeout:
+    #         raise SystemExit('Connection to AKTIN Broker timed out')
+    #     except requests.exceptions.HTTPError as err:
+    #         raise SystemExit(f'HTTP error occurred: {err}')
+    #     except requests.exceptions.RequestException as err:
+    #         raise SystemExit(f'An ambiguous error occurred: {err}')
+    # 
+    # def __append_to_broker_url(self, *items: str) -> str:
+    #     url = self.__broker_url
+    #     for item in items:
+    #         url = f'{url}/{item}'
+    #     return url
+    #
+    # def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
+    #     """
+    #     HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
+    #     """
+    #     return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
+    #             'Accept': mediatype}
 
     def get_request_result(self, id_request: str) -> requests.models.Response:
         """
@@ -193,16 +187,16 @@ class BrokerRequestResultManager:
         response.raise_for_status()
         return response
 
-    def get_tagged_requests_completion_as_dict(self) -> dict:
-        """
-        Get the completion status of requests tagged with a specific tag.
-        """
-        list_requests = self.__get_request_ids_with_tag(self.__tag_requests)
-        dict_broker = {}
-        for id_request in list_requests:
-            completion = self.__get_request_result_completion(id_request)
-            dict_broker[id_request] = str(completion)
-        return dict_broker
+    # def get_tagged_requests_completion_as_dict(self) -> dict:
+    #     """
+    #     Get the completion status of requests tagged with a specific tag.
+    #     """
+    #     list_requests = self.__get_request_ids_with_tag(self.__tag_requests)
+    #     dict_broker = {}
+    #     for id_request in list_requests:
+    #         completion = self.__get_request_result_completion(id_request)
+    #         dict_broker[id_request] = str(completion)
+    #     return dict_broker
 
     def __get_request_ids_with_tag(self, tag: str) -> list:
         logging.info('Checking for requests with tag %s', tag)
@@ -215,61 +209,18 @@ class BrokerRequestResultManager:
         logging.info('%d requests found', len(list_request_id))
         return list_request_id
 
-    def __get_request_result_completion(self, id_request: str) -> float:
-        """
-        Get the completion status of a given broker request.
-        Computes the result completion by counting connected nodes and the number of nodes that completed the request.
-        Returns the completion percentage (rounded to 2 decimal places) or 0.0 if no nodes found.
-        """
-        url = self.__append_to_broker_url('broker', 'request', id_request, 'status')
-        response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-        root = et.fromstring(response.content)
-        num_nodes = len(root.findall('.//{http://aktin.org/ns/exchange}node'))
-        num_completed = len(root.findall('.//{http://aktin.org/ns/exchange}completed'))
-        return round(num_completed / num_nodes, 2) if num_nodes else 0.0
-
-
-class OpenSSLFileEncryption:
-    def __init__(self):
-        self.__path_key_encryption = b'os.environ["SECURITY.PATH_ENCRYPTION_KEY"]'
-        self.__working_dir = os.environ['MISC.WORKING_DIR']
-
-    # def __encrypt_file(self, path_in, path_out):
-    #     with open(self.__path_key_encryption, 'rb') as key:
-    #         command = f"openssl enc -aes-256-cbc -salt -in {path_in} -out {path_out} -k {key}"
-    #         subprocess.run(command, shell=True)
-
-    def __encrypt_file(self, path_in, path_out):
-        with open(path_in, 'rb') as input_file:
-            plaintext = input_file.read()
-            ciphertext = self.__xor_encrypt(plaintext, self.__path_key_encryption)
-
-            with open(path_out, 'wb') as output_file:
-                # output_file.write(iv)
-                output_file.write(ciphertext)
-
-    @staticmethod
-    def __xor_encrypt(plaintext, key):
-        iv = os.urandom(16)
-        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
-        padder = padding.PKCS7(algorithms.AES.block_size).padder()
-        padded_plaintext = padder.update(plaintext) + padder.finalize()
-        encryptor = cipher.encryptor()
-        ciphertext = encryptor.update(padded_plaintext) + encryptor.finalize()
-
-        return iv + ciphertext
-
-    def __get_file_path(self, filename: str) -> (str, str):
-        enc_filename = filename + "_enc"
-        tmp_path_file = os.path.join(self.__working_dir, filename)
-        tmp_path_enc_file = os.path.join(self.__working_dir, enc_filename)
-        return tmp_path_file, tmp_path_enc_file
-
-    def get_enc_file_path(self, filename: str) -> str:
-        path_in, path_out = self.__get_file_path(filename)
-        self.__encrypt_file(path_in, path_out)
-        os.remove(path_in)
-        return path_out
+    # def __get_request_result_completion(self, id_request: str) -> float:
+    #     """
+    #     Get the completion status of a given broker request.
+    #     Computes the result completion by counting connected nodes and the number of nodes that completed the request.
+    #     Returns the completion percentage (rounded to 2 decimal places) or 0.0 if no nodes found.
+    #     """
+    #     url = self.__append_to_broker_url('broker', 'request', id_request, 'status')
+    #     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+    #     root = et.fromstring(response.content)
+    #     num_nodes = len(root.findall('.//{http://aktin.org/ns/exchange}node'))
+    #     num_completed = len(root.findall('.//{http://aktin.org/ns/exchange}completed'))
+    #     return round(num_completed / num_nodes, 2) if num_nodes else 0.0
 
 
 def main(path_toml: str):
