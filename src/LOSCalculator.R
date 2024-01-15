@@ -24,14 +24,30 @@ DataProcessor <- function(fileort) {
   return(obj)
 }
 
+getHighestExport <- function(fileort) {
+  # Listet alle Unterverzeichnisse in fileort auf
+  subdirs <- list.dirs(fileort, full.names = FALSE, recursive = FALSE)
+
+  # Extrahiert die Export-Werte als Zahlen
+  export_values <- as.numeric(sub("^export_([0-9]+)$", "\\1", subdirs))
+
+  # Wenn es keine Unterverzeichnisse gibt, gib 0 zurück
+  if (length(export_values) == 0) {
+    return(0)
+  }
+
+  # Gib den höchsten Export-Wert zurück
+  return(max(export_values))
+}
+
 # Methode zum Entpacken der Daten
 setGeneric("unpackData", function(object, file_numbers) standardGeneric("unpackData"))
 
 setMethod("unpackData", signature(object = "DataProcessor", indices = "numeric", export = "character"),
           function(object, indices, export) {
             for (i in indices) {
-              zipF <- file.path(object$fileort, sprintf("export_%s", export), sprintf("%d_result.zip", i))
-              outDir <- file.path(object$fileort, sprintf("export_%s", export), sprintf("%d_result", i))
+              zipF <- file.path(object$fileort, sprintf("export_%s", getHighestExport(object$fileort)), sprintf("%d_result.zip", i))
+              outDir <- file.path(object$fileort, sprintf("export_%s", getHighestExport(object$fileort)), sprintf("%d_result", i))
 
               # Überprüfen, ob das Ausgabeverzeichnis bereits existiert
               if (!dir.exists(outDir)) {
