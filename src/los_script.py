@@ -5,9 +5,6 @@ import re
 import sys
 import urllib
 import xml.etree.ElementTree as et
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
 
 import paramiko
 import requests
@@ -41,8 +38,7 @@ class Manager:
         and sets the environment variables based on the loaded configuration.
         """
         required_keys = {'BROKER.URL', 'BROKER.API_KEY', 'REQUESTS.TAG', 'SFTP.HOST', 'SFTP.USERNAME',
-                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'SECURITY.PATH_ENCRYPTION_KEY',
-                         'MISC.WORKING_DIR'}
+                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR'}
         if not os.path.isfile(path_toml):
             raise SystemExit('invalid TOML file path')
         with open(path_toml, encoding='utf-8') as file:
@@ -84,19 +80,15 @@ class SftpFileManager:
         Prior to uploading, stores the file temporarily in the current local folder and encrypts it using Fernet.
         """
         filename = self.__extract_filename_from_broker_response(response)
-        tmp_path_enc_file = self.encryptor.get_enc_file_path(filename)
         try:
-            self.upload_file(tmp_path_enc_file)
+            self.upload_file(filename)
         finally:
-            if os.path.isfile(tmp_path_enc_file):
-                os.remove(tmp_path_enc_file)
+            if os.path.isfile(filename):
+                os.remove(filename)
 
     @staticmethod
     def __extract_filename_from_broker_response(response: requests.models.Response) -> str:
         return re.search('filename=\"(.*)\"', response.headers['Content-Disposition']).group(1)
-
-    # def __encrypt_file(self, file: bytes) -> bytes:
-    #     return self.encryptor.encrypt(file)
 
     def upload_file(self, path_file: str):
         """
@@ -148,7 +140,7 @@ class BrokerRequestResultManager:
     #         raise SystemExit(f'HTTP error occurred: {err}')
     #     except requests.exceptions.RequestException as err:
     #         raise SystemExit(f'An ambiguous error occurred: {err}')
-    # 
+    #
     # def __append_to_broker_url(self, *items: str) -> str:
     #     url = self.__broker_url
     #     for item in items:
