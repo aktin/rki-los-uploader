@@ -2,7 +2,6 @@
 import logging
 import os
 import re
-import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
@@ -19,8 +18,9 @@ class Manager:
 
     def __init__(self, path_toml: str):
         self.__verify_and_load_toml(path_toml)
-        self.__broker = BrokerRequestResultManager()
-        self.__sftp = SftpFileManager()
+        # self.__broker = BrokerRequestResultManager()
+        # self.__sftp = SftpFileManager()
+        # self.__xml = StatusXmlManager()
 
     def __flatten_dict(self, d, parent_key='', sep='.'):
         items = []
@@ -38,8 +38,7 @@ class Manager:
         and sets the environment variables based on the loaded configuration.
         """
         required_keys = {'BROKER.URL', 'BROKER.API_KEY', 'REQUESTS.TAG', 'SFTP.HOST', 'SFTP.USERNAME',
-                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'SECURITY.PATH_ENCRYPTION_KEY',
-                         'MISC.WORKING_DIR'}
+                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR'}
         if not os.path.isfile(path_toml):
             raise SystemExit('invalid TOML file path')
         with open(path_toml, encoding='utf-8') as file:
@@ -81,19 +80,15 @@ class SftpFileManager:
         Prior to uploading, stores the file temporarily in the current local folder and encrypts it using Fernet.
         """
         filename = self.__extract_filename_from_broker_response(response)
-        tmp_path_enc_file = self.encryptor.get_enc_file_path(filename)
         try:
-            self.upload_file(tmp_path_enc_file)
+            self.upload_file(filename)
         finally:
-            if os.path.isfile(tmp_path_enc_file):
-                os.remove(tmp_path_enc_file)
+            if os.path.isfile(filename):
+                os.remove(filename)
 
     @staticmethod
     def __extract_filename_from_broker_response(response: requests.models.Response) -> str:
         return re.search('filename=\"(.*)\"', response.headers['Content-Disposition']).group(1)
-
-    # def __encrypt_file(self, file: bytes) -> bytes:
-    #     return self.encryptor.encrypt(file)
 
     def upload_file(self, path_file: str):
         """
@@ -134,30 +129,30 @@ class BrokerRequestResultManager:
         self.__tag_requests = os.environ['REQUESTS.TAG']
         self.__check_broker_server_availability()
 
-    def __check_broker_server_availability(self):
-        url = self.__append_to_broker_url('broker', 'status')
-        try:
-            response = requests.head(url, timeout=self.__timeout)
-            response.raise_for_status()
-        except requests.exceptions.Timeout:
-            raise SystemExit('Connection to AKTIN Broker timed out')
-        except requests.exceptions.HTTPError as err:
-            raise SystemExit(f'HTTP error occurred: {err}')
-        except requests.exceptions.RequestException as err:
-            raise SystemExit(f'An ambiguous error occurred: {err}')
-
-    def __append_to_broker_url(self, *items: str) -> str:
-        url = self.__broker_url
-        for item in items:
-            url = f'{url}/{item}'
-        return url
-
-    def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
-        """
-        HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
-        """
-        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
-                'Accept': mediatype}
+    # def __check_broker_server_availability(self):
+    #     url = self.__append_to_broker_url('broker', 'status')
+    #     try:
+    #         response = requests.head(url, timeout=self.__timeout)
+    #         response.raise_for_status()
+    #     except requests.exceptions.Timeout:
+    #         raise SystemExit('Connection to AKTIN Broker timed out')
+    #     except requests.exceptions.HTTPError as err:
+    #         raise SystemExit(f'HTTP error occurred: {err}')
+    #     except requests.exceptions.RequestException as err:
+    #         raise SystemExit(f'An ambiguous error occurred: {err}')
+    #
+    # def __append_to_broker_url(self, *items: str) -> str:
+    #     url = self.__broker_url
+    #     for item in items:
+    #         url = f'{url}/{item}'
+    #     return url
+    #
+    # def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
+    #     """
+    #     HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
+    #     """
+    #     return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
+    #             'Accept': mediatype}
 
     def get_request_result(self, id_request: str) -> requests.models.Response:
         """
@@ -184,6 +179,17 @@ class BrokerRequestResultManager:
         response.raise_for_status()
         return response
 
+    # def get_tagged_requests_completion_as_dict(self) -> dict:
+    #     """
+    #     Get the completion status of requests tagged with a specific tag.
+    #     """
+    #     list_requests = self.__get_request_ids_with_tag(self.__tag_requests)
+    #     dict_broker = {}
+    #     for id_request in list_requests:
+    #         completion = self.__get_request_result_completion(id_request)
+    #         dict_broker[id_request] = str(completion)
+    #     return dict_broker
+
     def __get_request_ids_with_tag(self, tag: str) -> list:
         logging.info('Checking for requests with tag %s', tag)
         url = self.__append_to_broker_url('broker', 'request', 'filtered')
@@ -194,6 +200,19 @@ class BrokerRequestResultManager:
         list_request_id = [element.get('id') for element in et.fromstring(response.content)]
         logging.info('%d requests found', len(list_request_id))
         return list_request_id
+
+    # def __get_request_result_completion(self, id_request: str) -> float:
+    #     """
+    #     Get the completion status of a given broker request.
+    #     Computes the result completion by counting connected nodes and the number of nodes that completed the request.
+    #     Returns the completion percentage (rounded to 2 decimal places) or 0.0 if no nodes found.
+    #     """
+    #     url = self.__append_to_broker_url('broker', 'request', id_request, 'status')
+    #     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+    #     root = et.fromstring(response.content)
+    #     num_nodes = len(root.findall('.//{http://aktin.org/ns/exchange}node'))
+    #     num_completed = len(root.findall('.//{http://aktin.org/ns/exchange}completed'))
+    #     return round(num_completed / num_nodes, 2) if num_nodes else 0.0
 
 
 def main(path_toml: str):
