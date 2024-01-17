@@ -73,23 +73,6 @@ class SftpFileManager:
                     timeout=self.__sftp_timeout)
         return ssh.open_sftp()
 
-    def upload_request_result(self, response: requests.models.Response):
-        """
-        Upload the content of the response from `BrokerRequestResultManager.get_request_result()` to the SFTP server.
-        Extracts the filename from the response headers.
-        Prior to uploading, stores the file temporarily in the current local folder and encrypts it using Fernet.
-        """
-        filename = self.__extract_filename_from_broker_response(response)
-        try:
-            self.upload_file(filename)
-        finally:
-            if os.path.isfile(filename):
-                os.remove(filename)
-
-    @staticmethod
-    def __extract_filename_from_broker_response(response: requests.models.Response) -> str:
-        return re.search('filename=\"(.*)\"', response.headers['Content-Disposition']).group(1)
-
     def upload_file(self, path_file: str):
         """
         Upload a file to the SFTP server and overwrite if it already exists on the server.
@@ -98,16 +81,13 @@ class SftpFileManager:
         filename = os.path.basename(path_file)
         self.__connection.put(path_file, f"{self.__sftp_foldername}/{filename}")
 
-    def delete_request_result(self, id_request: str):
-        name_zip = self.__create_results_file_name(id_request)
-        self.__delete_file(name_zip)
-
-    @staticmethod
-    def __create_results_file_name(id_request: str) -> str:
+    def list_files(self):
         """
-        Create the file name for the request result based on the AKTIN Broker naming convention.
+        List all files in the SFTP server's specified folder.
         """
-        return ''.join(['export_', id_request, '.zip'])
+        logging.info('Listing files on sftp server')
+        files = self.__connection.listdir(f"{self.__sftp_foldername}")
+        return files
 
     def __delete_file(self, filename: str):
         logging.info('Deleting %s from sftp server', filename)
@@ -127,42 +107,44 @@ class BrokerRequestResultManager:
         self.__broker_url = os.environ['BROKER.URL']
         self.__admin_api_key = os.environ['BROKER.API_KEY']
         self.__tag_requests = os.environ['REQUESTS.TAG']
+        self.__working_dir = os.environ['MISC.WORKING_DIR']
         self.__check_broker_server_availability()
 
-    # def __check_broker_server_availability(self):
-    #     url = self.__append_to_broker_url('broker', 'status')
-    #     try:
-    #         response = requests.head(url, timeout=self.__timeout)
-    #         response.raise_for_status()
-    #     except requests.exceptions.Timeout:
-    #         raise SystemExit('Connection to AKTIN Broker timed out')
-    #     except requests.exceptions.HTTPError as err:
-    #         raise SystemExit(f'HTTP error occurred: {err}')
-    #     except requests.exceptions.RequestException as err:
-    #         raise SystemExit(f'An ambiguous error occurred: {err}')
-    #
-    # def __append_to_broker_url(self, *items: str) -> str:
-    #     url = self.__broker_url
-    #     for item in items:
-    #         url = f'{url}/{item}'
-    #     return url
-    #
-    # def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
-    #     """
-    #     HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
-    #     """
-    #     return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
-    #             'Accept': mediatype}
+    def __check_broker_server_availability(self):
+        url = self.__append_to_broker_url('broker', 'status')
+        try:
+            response = requests.head(url, timeout=self.__timeout)
+            response.raise_for_status()
+        except requests.exceptions.Timeout:
+            raise SystemExit('Connection to AKTIN Broker timed out')
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(f'HTTP error occurred: {err}')
+        except requests.exceptions.RequestException as err:
+            raise SystemExit(f'An ambiguous error occurred: {err}')
 
-    def get_request_result(self, id_request: str) -> requests.models.Response:
+    def __append_to_broker_url(self, *items: str) -> str:
+        url = self.__broker_url
+        for item in items:
+            url = f'{url}/{item}'
+        return url
+
+    def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
+        """
+        HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
+        """
+        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
+                'Accept': mediatype}
+
+    def download_request_result_to_working_dir(self, id_request: str) -> str:
         """
         Retrieve the request results from the AKTIN Broker for a specific request ID.
-        To download request results from AKTIN broker, they have to be exported first as a temporarily downloadable file with an uuid.
+        To download request results from AKTIN broker, they have to be exported first as a temporarily
+        downloadable file with an uuid.
         """
         logging.info('Downloading results of %s', id_request)
         id_export = self.__export_request_result(id_request)
-        response = self.__download_exported_result(id_export)
-        return response
+        zip_file_path = self.__download_exported_result(id_export, id_request)
+        return zip_file_path
 
     def __export_request_result(self, id_request: str) -> str:
         """
@@ -173,22 +155,21 @@ class BrokerRequestResultManager:
         response.raise_for_status()
         return response.text
 
-    def __download_exported_result(self, id_export: str) -> requests.models.Response:
+    def __download_exported_result(self, id_export: str, id_request: str) -> str:
+        """
+        Download the exported request results as a ZIP file inside the folder WORKING_DIR.
+        Returns the path to the downloaded ZIP file.
+        """
         url = self.__append_to_broker_url('broker', 'download', id_export)
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
-        return response
 
-    # def get_tagged_requests_completion_as_dict(self) -> dict:
-    #     """
-    #     Get the completion status of requests tagged with a specific tag.
-    #     """
-    #     list_requests = self.__get_request_ids_with_tag(self.__tag_requests)
-    #     dict_broker = {}
-    #     for id_request in list_requests:
-    #         completion = self.__get_request_result_completion(id_request)
-    #         dict_broker[id_request] = str(completion)
-    #     return dict_broker
+        zip_file_path = os.path.join(self.__working_dir, f'{id_request}_result.zip')
+
+        with open(zip_file_path, 'wb') as zip_file:
+            zip_file.write(response.content)
+
+        return zip_file_path
 
     def __get_request_ids_with_tag(self, tag: str) -> list:
         logging.info('Checking for requests with tag %s', tag)
@@ -200,19 +181,6 @@ class BrokerRequestResultManager:
         list_request_id = [element.get('id') for element in et.fromstring(response.content)]
         logging.info('%d requests found', len(list_request_id))
         return list_request_id
-
-    # def __get_request_result_completion(self, id_request: str) -> float:
-    #     """
-    #     Get the completion status of a given broker request.
-    #     Computes the result completion by counting connected nodes and the number of nodes that completed the request.
-    #     Returns the completion percentage (rounded to 2 decimal places) or 0.0 if no nodes found.
-    #     """
-    #     url = self.__append_to_broker_url('broker', 'request', id_request, 'status')
-    #     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-    #     root = et.fromstring(response.content)
-    #     num_nodes = len(root.findall('.//{http://aktin.org/ns/exchange}node'))
-    #     num_completed = len(root.findall('.//{http://aktin.org/ns/exchange}completed'))
-    #     return round(num_completed / num_nodes, 2) if num_nodes else 0.0
 
 
 def main(path_toml: str):
