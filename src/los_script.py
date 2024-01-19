@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
@@ -89,7 +90,7 @@ class SftpFileManager:
         files = self.__connection.listdir(f"{self.__sftp_foldername}")
         return files
 
-    def __delete_file(self, filename: str):
+    def delete_file(self, filename: str):
         logging.info('Deleting %s from sftp server', filename)
         try:
             self.__connection.remove(f"{self.__sftp_foldername}/{filename}")
@@ -143,7 +144,7 @@ class BrokerRequestResultManager:
         """
         logging.info('Downloading results of %s', id_request)
         id_export = self.__export_request_result(id_request)
-        zip_file_path = self.__download_exported_result(id_export, id_request)
+        zip_file_path = self.__download_exported_result_to_working_dir(id_export, id_request)
         return zip_file_path
 
     def __export_request_result(self, id_request: str) -> str:
@@ -155,7 +156,7 @@ class BrokerRequestResultManager:
         response.raise_for_status()
         return response.text
 
-    def __download_exported_result(self, id_export: str, id_request: str) -> str:
+    def __download_exported_result_to_working_dir(self, id_export: str, id_request: str) -> str:
         """
         Download the exported request results as a ZIP file inside the folder WORKING_DIR.
         Returns the path to the downloaded ZIP file.
@@ -163,15 +164,12 @@ class BrokerRequestResultManager:
         url = self.__append_to_broker_url('broker', 'download', id_export)
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
-
         zip_file_path = os.path.join(self.__working_dir, f'{id_request}_result.zip')
-
         with open(zip_file_path, 'wb') as zip_file:
             zip_file.write(response.content)
-
         return zip_file_path
 
-    def __get_request_ids_with_tag(self, tag: str) -> list:
+    def get_request_ids_with_tag(self, tag: str) -> list:
         logging.info('Checking for requests with tag %s', tag)
         url = self.__append_to_broker_url('broker', 'request', 'filtered')
         url = '?'.join([url, urllib.parse.urlencode(
@@ -200,3 +198,11 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         raise SystemExit('path to config TOML is missing!')
     main(sys.argv[1])
+
+    r_script_path = "dein_r_skript.R"
+
+    # Dateipfad zum R-Skript
+    fileort = "/Pfad/zum/Ordner"
+
+    # Aufruf des R-Skripts mit Übergabe des fileort-Parameters
+    subprocess.run(["Rscript", r_script_path, fileort])
