@@ -163,15 +163,13 @@ joinKliniken <- function(db, los_valid) {
   gesamt_db_Pand <- left_join(los_valid, db)
   gesamt_db_Pand <- gesamt_db_Pand %>% dplyr::filter(klinik != 33)
   kliniken <- gesamt_db_Pand %>% group_by(kalenderwoche_jahr, KW) %>% summarise(n = length(unique(klinik)))
-  #TODO kliniken macht nix
-  return(gesamt_db_Pand)
+  return(gesamt_db_Pand, kliniken)
 }
 
-calculateZeitraum <- function(gesamt_db_Pand) {
+calculateZeitraum <- function(gesamt_db_Pand, kliniken, los) {
   zeitraum <- gesamt_db_Pand %>%
     group_by(kalenderwoche_jahr, KW) %>%
     summarise(weighted.mean(los, klinik))
-  #TODO woher kommt klinik? Im Original auch fraglich (Z. 107)
   fallzahl <- calculateFallzahl(gesamt_db_Pand)
   zeitraum <- left_join(zeitraum, fallzahl)
   zeitraum$LOS_vor_Pand <- 193.5357
