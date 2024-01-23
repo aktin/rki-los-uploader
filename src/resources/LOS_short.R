@@ -117,7 +117,7 @@ df$KW<-as.character(df$KW)
 zeitraum$kalenderwoche_jahr<-as.factor(zeitraum$kalenderwoche_jahr)
 zeitraum<-left_join(zeitraum,df)
 
-#### ANPASsUNG LOS VOR PANDEMIE #### 
+#### ANPASSUNG LOS VOR PANDEMIE ####
 zeitraum$LOS_vor_Pand<-193.5357
 zeitraum$Abweichung<-zeitraum$`weighted.mean(los, klinik)`-zeitraum$LOS_vor_Pand
 zeitraum <- mutate(zeitraum, Veränderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))

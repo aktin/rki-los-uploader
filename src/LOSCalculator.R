@@ -1,61 +1,48 @@
-#### BMG Pandemieradar ####
-# conflicted pakete installieren
+#### BMG Pandemieradar NEU ####
 library(conflicted)
 library(dplyr)
-
-# Pakete in R
 library(readr)
 library(tidyverse)
 library(lubridate)
 library(mosaic)
+library(ISOweek)
 
-# Definition der S4-Klasse "DataProcessor"
 fileort <- commandArgs(trailingOnly = TRUE)[1]
 # fileort <- "C:\\Users\\whoy\\PycharmProjects\\pythonProject5\\libraries\\test_data.txt"
 dataProcessor <- DataProcessor(fileort)
 file_numbers <- c(1:3, 8:56, 58, 60, 67)
-export <- getHighestExport(fileort)
 unpackData(dataProcessor, file_numbers, export)
-processFiles(dataProcessor)
+case_data <- processFiles()
+performAnalysis(case_data)
+
 
 setClass("DataProcessor",
          representation(fileort = "character"))
 
-# Konstruktor-Methode für die Klasse
 DataProcessor <- function(fileort) {
   obj <- new("DataProcessor", fileort = fileort)
   return(obj)
 }
 
 getHighestExport <- function(fileort) {
-  # Listet alle Unterverzeichnisse in fileort auf
   subdirs <- list.dirs(fileort, full.names = FALSE, recursive = FALSE)
-
-  # Extrahiert die Export-Werte als Zahlen
   export_values <- as.numeric(sub("^export_([0-9]+)$", "\\1", subdirs))
-
-  # Wenn es keine Unterverzeichnisse gibt, gib 0 zurück
   if (length(export_values) == 0) {
     return(0)
   }
-
-  # Gib den höchsten Export-Wert zurück
   return(max(export_values))
 }
 
-# Methode zum Entpacken der Daten
-unpackData <- function(object, indices, export) {
+unpackData <- function(object, indices) {
   for (i in indices) {
     zipF <- file.path(object$fileort, sprintf("export_%s", getHighestExport(object$fileort)), sprintf("%d_result.zip", i))
     outDir <- file.path(object$fileort, sprintf("export_%s", getHighestExport(object$fileort)), sprintf("%d_result", i))
-
-    # Überprüfen, ob das Ausgabeverzeichnis bereits existiert
     if (!dir.exists(outDir)) {
       dir.create(outDir)
     }
-
     tryCatch({
       unzip(zipF, exdir = outDir)
+      object$fileort <- outDir
       print(paste("Dateien erfolgreich entpackt nach:", outDir))
     }, error = function(e) {
       warning(paste("Fehler beim Entpacken von Dateien:", e$message))
@@ -63,7 +50,6 @@ unpackData <- function(object, indices, export) {
   }
 }
 
-# Methode zum Einlesen und Verarbeiten der Dateien
 processFiles <- function(object) {
   case_data <- bind_rows(
     lapply(object$fileNumbers, function(i) {
@@ -81,53 +67,39 @@ processFiles <- function(object) {
       }
     })
   ) %>% filter(!is.null(aufnahme_ts) && nrow(.) > 0)
-
-  # Löschen der temporären Dataframes
   rm(list = paste0("case_data_", object$fileNumbers))
-
   return(case_data)
 }
 
 fillCaseData <- function(case_data) {
-  # Zeitstempel mit Zeitzone versehen
   case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts)
   case_data$triage_ts <- with_tz(case_data$triage_ts)
   case_data$entlassung_ts <- with_tz(case_data$entlassung_ts)
-
-  # Neue Variablen Jahr, Kalenderwoche und Jahr der Kalenderwoche
   case_data$jahr <- year(case_data$aufnahme_ts)
   case_data$KW <- format(case_data$aufnahme_ts, "%V")
   case_data$kalenderwoche_jahr <- format(case_data$aufnahme_ts, "%G")
-
-  # Testen erster Zeitpunkt
   case_data$ersterZ <- as.integer(case_data$aufnahme_ts > case_data$triage_ts)
-
-  # Neue Variablen erstellen für erster Zeitpunkt des Kontaktes in der NA
   case_data$Vergleich <- ifelse(is.na(case_data$triage_ts), 0, as.integer(case_data$aufnahme_ts > case_data$triage_ts))
   case_data$ersterZeitpunkt <- ifelse(
     is.na(case_data$triage_ts),
     format(case_data$aufnahme_ts, "%Y-%m-%d %H:%M:%S"),
     format(pmax(case_data$aufnahme_ts, case_data$triage_ts), "%Y-%m-%d %H:%M:%S")
   )
-
-  # Erstellen der Length of stay (LOS)
   case_data$los <- difftime(case_data$entlassung_ts, case_data$ersterZeitpunkt, units = "mins")
-
   return(case_data)
 }
 
-performAnalysis <- function(object) {
-  anzahl_fälle <- countKliniken(object$case_data)
-  db <- filterCases(object$case_data)
+performAnalysis <- function(case_data) {
+  filledCaseData <- fillCaseData(case_data)
+  anzahl_fälle <- countKliniken(filledCaseData)
+  db <- filterCases(filledCaseData)
   los <- filterLos(db)
   los_valid <- filterLosValid(los, anzahl_fälle)
   gesamt_db_Pand <- joinKliniken(db, los_valid)
   zeitraum <- calculateZeitraum(gesamt_db_Pand)
-  saveData(zeitraum)
-  return(zeitraum)
+  saveData(zeitraum)  #TODO eventuell rausziehen oder im Python Script?
 }
 
-# Weitere Hilfsfunktionen oder Methoden
 countKliniken <- function(case_data) {
   anzahl_fälle <- data.frame(table(case_data$klinik))
   colnames(anzahl_fälle)[1] <- "klinik"
@@ -177,7 +149,8 @@ calculateZeitraum <- function(gesamt_db_Pand, kliniken, los) {
   zeitraum <- mutate(zeitraum, Veränderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   kliniken <- countKliniken(zeitraum)
   zeitraum <- left_join(zeitraum, kliniken)
-  zeitraum <- zeitraum %>% dplyr::filter(KW != "21" & KW != "26")
+  kalenderwoche <- getCurrentCalendarWeek()
+  zeitraum <- zeitraum %>% dplyr::filter(KW != as.character(kalenderwoche-1) & KW != as.character(kalenderwoche+4))
   zeitraum$date <- paste(zeitraum$kalenderwoche_jahr, "-W", zeitraum$KW, sep = "")
   zeitraum <- zeitraum[, -c(1, 2)]
   colnames(zeitraum) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
@@ -185,6 +158,13 @@ calculateZeitraum <- function(gesamt_db_Pand, kliniken, los) {
   zeitraum <- zeitraum[, col_order]
   zeitraum <- zeitraum %>% mutate_if(is.numeric, round, digits = 2)
   return(zeitraum)
+}
+
+getCurrentCalendarWeek <- function() {
+  heutiges_datum <- Sys.Date()
+  erster_tag_monat <- floor_date(heutiges_datum, "month")
+  erste_kw <- isoweek(erster_tag_monat)
+  return(erste_kw)
 }
 
 calculateFallzahl <- function(gesamt_db_Pand) {
@@ -199,14 +179,14 @@ calculateFallzahl <- function(gesamt_db_Pand) {
 }
 
 saveData <- function(zeitraum) {
-  KW_22_25_2023 <- zeitraum
+  #TODO Ausgabepfad?
   write.table(
-    KW_22_25_2023,
+    zeitraum,
     file = paste0(
       home_dir_windows,
       "\\OneDrive - Uniklinik RWTH Aachen\\Desktop\\pandemieradar_sql\\LOS_2023-W22_to_2023-W25_20230629-094752.csv"
     ),
-    dec = "../../libraries",
+    dec = ".",
     sep = ",",
     row.names = FALSE,
     quote = FALSE

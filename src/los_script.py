@@ -200,9 +200,5 @@ if __name__ == '__main__':
     main(sys.argv[1])
 
     r_script_path = "dein_r_skript.R"
-
-    # Dateipfad zum R-Skript
     fileort = "/Pfad/zum/Ordner"
-
-    # Aufruf des R-Skripts mit Übergabe des fileort-Parameters
     subprocess.run(["Rscript", r_script_path, fileort])
