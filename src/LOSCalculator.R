@@ -7,9 +7,9 @@ library(lubridate)
 library(mosaic)
 library(ISOweek)
 
-fileort <- commandArgs(trailingOnly = TRUE)[1]
-# fileort <- "C:\\Users\\whoy\\PycharmProjects\\pythonProject5\\libraries\\test_data.txt"
-dataProcessor <- DataProcessor(fileort)
+filepath <- commandArgs(trailingOnly = TRUE)[1]
+# filepath <- "C:\\Users\\whoy\\PycharmProjects\\pythonProject5\\libraries\\test_data.txt"
+dataProcessor <- DataProcessor(filepath)
 file_numbers <- c(1:3, 8:56, 58, 60, 67)
 unpackData(dataProcessor, file_numbers, export)
 case_data <- processFiles()
@@ -17,15 +17,15 @@ performAnalysis(case_data)
 
 
 setClass("DataProcessor",
-         representation(fileort = "character"))
+         representation(filepath = "character"))
 
-DataProcessor <- function(fileort) {
-  obj <- new("DataProcessor", fileort = fileort)
+DataProcessor <- function(filepath) {
+  obj <- new("DataProcessor", filepath = filepath)
   return(obj)
 }
 
-getHighestExport <- function(fileort) {
-  subdirs <- list.dirs(fileort, full.names = FALSE, recursive = FALSE)
+getHighestExport <- function(filepath) {
+  subdirs <- list.dirs(filepath, full.names = FALSE, recursive = FALSE)
   export_values <- as.numeric(sub("^export_([0-9]+)$", "\\1", subdirs))
   if (length(export_values) == 0) {
     return(0)
@@ -35,14 +35,14 @@ getHighestExport <- function(fileort) {
 
 unpackData <- function(object, indices) {
   for (i in indices) {
-    zipF <- file.path(object$fileort, sprintf("export_%s", getHighestExport(object$fileort)), sprintf("%d_result.zip", i))
-    outDir <- file.path(object$fileort, sprintf("export_%s", getHighestExport(object$fileort)), sprintf("%d_result", i))
+    zipF <- file.path(object$filepath, sprintf("export_%s", getHighestExport(object$filepath)), sprintf("%d_result.zip", i))
+    outDir <- file.path(object$filepath, sprintf("export_%s", getHighestExport(object$filepath)), sprintf("%d_result", i))
     if (!dir.exists(outDir)) {
       dir.create(outDir)
     }
     tryCatch({
       unzip(zipF, exdir = outDir)
-      object$fileort <- outDir
+      object$filepath <- outDir
       print(paste("Dateien erfolgreich entpackt nach:", outDir))
     }, error = function(e) {
       warning(paste("Fehler beim Entpacken von Dateien:", e$message))
@@ -53,7 +53,7 @@ unpackData <- function(object, indices) {
 processFiles <- function(object) {
   case_data <- bind_rows(
     lapply(object$fileNumbers, function(i) {
-      file_path <- file.path(object$fileort, sprintf("%d_result\\test_data.txt", i))
+      file_path <- file.path(object$filepath, sprintf("%d_result\\test_data.txt", i))
       if (file.exists(file_path)) {
         cat("nach if: ", file_path, "\n")
         read_delim(
@@ -91,19 +91,19 @@ fillCaseData <- function(case_data) {
 
 performAnalysis <- function(case_data) {
   filledCaseData <- fillCaseData(case_data)
-  anzahl_fälle <- countKliniken(filledCaseData)
+  num_of_cases <- countKliniken(filledCaseData)
   db <- filterCases(filledCaseData)
   los <- filterLos(db)
-  los_valid <- filterLosValid(los, anzahl_fälle)
-  gesamt_db_Pand <- joinKliniken(db, los_valid)
-  zeitraum <- calculateZeitraum(gesamt_db_Pand)
-  saveData(zeitraum)  #TODO eventuell rausziehen oder im Python Script?
+  los_valid <- filterLosValid(los, num_of_cases)
+  complete_db_Pand <- joinClinics(db, los_valid)
+  timeframe <- calculateZeitraum(complete_db_Pand)
+  saveData(timeframe)  #TODO eventuell rausziehen oder im Python Script?
 }
 
 countKliniken <- function(case_data) {
-  anzahl_fälle <- data.frame(table(case_data$klinik))
-  colnames(anzahl_fälle)[1] <- "klinik"
-  return(anzahl_fälle)
+  num_of_cases <- data.frame(table(case_data$klinik))
+  colnames(num_of_cases)[1] <- "klinik"
+  return(num_of_cases)
 }
 
 filterCases <- function(case_data) {
@@ -131,33 +131,33 @@ filterLosValid <- function(los, anzahl_fälle) {
   return(los)
 }
 
-joinKliniken <- function(db, los_valid) {
-  gesamt_db_Pand <- left_join(los_valid, db)
-  gesamt_db_Pand <- gesamt_db_Pand %>% dplyr::filter(klinik != 33)
-  kliniken <- gesamt_db_Pand %>% group_by(kalenderwoche_jahr, KW) %>% summarise(n = length(unique(klinik)))
-  return(gesamt_db_Pand, kliniken)
+joinClinics <- function(db, los_valid) {
+  complete_db_Pand <- left_join(los_valid, db)
+  complete_db_Pand <- complete_db_Pand %>% dplyr::filter(klinik != 33)
+  clinics <- complete_db_Pand %>% group_by(kalenderwoche_jahr, KW) %>% summarise(n = length(unique(klinik)))
+  return(complete_db_Pand, clinics)
 }
 
-calculateZeitraum <- function(gesamt_db_Pand, kliniken, los) {
-  zeitraum <- gesamt_db_Pand %>%
+calculateZeitraum <- function(complete_db_Pand, clinics, los) {
+  timeframe <- complete_db_Pand %>%
     group_by(kalenderwoche_jahr, KW) %>%
     summarise(weighted.mean(los, klinik))
-  fallzahl <- calculateFallzahl(gesamt_db_Pand)
-  zeitraum <- left_join(zeitraum, fallzahl)
-  zeitraum$LOS_vor_Pand <- 193.5357
-  zeitraum$Abweichung <- zeitraum$`weighted.mean(los, klinik)` - zeitraum$LOS_vor_Pand
-  zeitraum <- mutate(zeitraum, Veränderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
-  kliniken <- countKliniken(zeitraum)
-  zeitraum <- left_join(zeitraum, kliniken)
-  kalenderwoche <- getCurrentCalendarWeek()
-  zeitraum <- zeitraum %>% dplyr::filter(KW != as.character(kalenderwoche-1) & KW != as.character(kalenderwoche+4))
-  zeitraum$date <- paste(zeitraum$kalenderwoche_jahr, "-W", zeitraum$KW, sep = "")
-  zeitraum <- zeitraum[, -c(1, 2)]
-  colnames(zeitraum) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
+  fallzahl <- calculateFallzahl(complete_db_Pand)
+  timeframe <- left_join(timeframe, fallzahl)
+  timeframe$LOS_vor_Pand <- 193.5357
+  timeframe$Abweichung <- timeframe$`weighted.mean(los, klinik)` - timeframe$LOS_vor_Pand
+  timeframe <- mutate(timeframe, Veränderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
+  clinics <- countKliniken(timeframe)
+  timeframe <- left_join(timeframe, clinics)
+  calendarweek <- getCurrentCalendarWeek()
+  timeframe <- timeframe %>% dplyr::filter(KW != as.character(calendarweek-1) & KW != as.character(calendarweek+4))
+  timeframe$date <- paste(timeframe$kalenderwoche_jahr, "-W", timeframe$KW, sep = "")
+  timeframe <- timeframe[, -c(1, 2)]
+  colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
   col_order <- c("date", "ed_count", "visit_mean", "los_mean", "los_reference", "los_difference", "change")
-  zeitraum <- zeitraum[, col_order]
-  zeitraum <- zeitraum %>% mutate_if(is.numeric, round, digits = 2)
-  return(zeitraum)
+  timeframe <- timeframe[, col_order]
+  timeframe <- timeframe %>% mutate_if(is.numeric, round, digits = 2)
+  return(timeframe)
 }
 
 getCurrentCalendarWeek <- function() {
@@ -167,9 +167,9 @@ getCurrentCalendarWeek <- function() {
   return(erste_kw)
 }
 
-calculateFallzahl <- function(gesamt_db_Pand) {
-  fallzahl <- data.frame(table(gesamt_db_Pand$kalenderwoche_jahr, gesamt_db_Pand$KW, gesamt_db_Pand$klinik))
-  df <- fallzahl %>%
+calculateFallzahl <- function(complete_db_Pand) {
+  case_num <- data.frame(table(complete_db_Pand$kalenderwoche_jahr, complete_db_Pand$KW, complete_db_Pand$klinik))
+  df <- case_num %>%
     group_by(Var1, Var2) %>%
     summarise(mean_Fallzahl = mosaic::mean(Freq, na.rm = TRUE))
   df <- df %>% dplyr::filter(mean_Fallzahl != 0)
@@ -178,10 +178,10 @@ calculateFallzahl <- function(gesamt_db_Pand) {
   return(df)
 }
 
-saveData <- function(zeitraum) {
+saveData <- function(timeframe) {
   #TODO Ausgabepfad?
   write.table(
-    zeitraum,
+    timeframe,
     file = paste0(
       home_dir_windows,
       "\\OneDrive - Uniklinik RWTH Aachen\\Desktop\\pandemieradar_sql\\LOS_2023-W22_to_2023-W25_20230629-094752.csv"
