@@ -13,7 +13,7 @@ library(mosaic)
 # Einlesen der Export-nummer Anpassen
 export <- "2190"
 # Verzeichnis der Exporte Anpassen
-fileort <- "C:\\Users\\whoy\\PycharmProjects\\pythonProject5\\libraries\\test_data.txt"
+fileort <- "C:\\Users\\mjavdoschin\\PycharmProjects\\LOC_Calculator\\libraries\\test_data.txt"
 
 # Enpacken der Daten
 for (i in c(1:3, 8:56, 58, 60,67)) {
@@ -72,8 +72,8 @@ case_data$ersterZeitpunkt <- ifelse(is.na(case_data$triage_ts), format(as.POSIXc
 case_data$los<-difftime(case_data$entlassung_ts,case_data$ersterZeitpunkt,units = c("mins"))
 
 #### Klinken #### 
-anzahl_fälle<-data.frame(table(case_data$klinik))
-colnames(anzahl_fälle)[1]<-"klinik"
+anzahl_faelle<-data.frame(table(case_data$klinik))
+colnames(anzahl_faelle)[1]<-"klinik"
 
 ####  Filtern ohne Entlassungzeit= keine LOS/ über 24 h / unter 0 Minuten / unter 1 Minute #### 
 db<-case_data%>%dplyr::filter(is.na(los)==FALSE)
@@ -85,7 +85,7 @@ db2<-db
 #### Filtern der Kliniken mit über 20% Fehlerquote (unplausibel) und über 300 Minuten #### 
 los<-data.frame(favstats(db2$los~db2$klinik))
 colnames(los)[1]<-"klinik"
-los<-left_join(los,anzahl_fälle)
+los<-left_join(los, anzahl_faelle)
 los$np<-los$Freq-los$n
 los$np_prozent<-(los$np/los$Freq)*100
 los<-los%>%dplyr::filter(np_prozent<20)
@@ -120,7 +120,7 @@ zeitraum<-left_join(zeitraum,df)
 #### ANPASSUNG LOS VOR PANDEMIE ####
 zeitraum$LOS_vor_Pand<-193.5357
 zeitraum$Abweichung<-zeitraum$`weighted.mean(los, klinik)`-zeitraum$LOS_vor_Pand
-zeitraum <- mutate(zeitraum, Veränderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
+zeitraum <- mutate(zeitraum, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
 zeitraum<-left_join(zeitraum,kliniken)
 ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ## Hier wöchentliche Anpassung notwendig

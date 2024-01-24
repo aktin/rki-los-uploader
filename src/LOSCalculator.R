@@ -7,20 +7,9 @@ library(lubridate)
 library(mosaic)
 library(ISOweek)
 
-filepath <- commandArgs(trailingOnly = TRUE)[1]
-# filepath <- "C:\\Users\\whoy\\PycharmProjects\\pythonProject5\\libraries\\test_data.txt"
-dataProcessor <- DataProcessor(filepath)
-file_numbers <- c(1:3, 8:56, 58, 60, 67)
-unpackData(dataProcessor, file_numbers, export)
-case_data <- processFiles()
-performAnalysis(case_data)
-
-
-setClass("DataProcessor",
-         representation(filepath = "character"))
-
 DataProcessor <- function(filepath) {
-  obj <- new("DataProcessor", filepath = filepath)
+  obj <- list(filepath = filepath)
+  class(obj) <- "DataProcessor"
   return(obj)
 }
 
@@ -33,16 +22,16 @@ getHighestExport <- function(filepath) {
   return(max(export_values))
 }
 
-unpackData <- function(object, indices) {
-  for (i in indices) {
-    zipF <- file.path(object$filepath, sprintf("export_%s", getHighestExport(object$filepath)), sprintf("%d_result.zip", i))
-    outDir <- file.path(object$filepath, sprintf("export_%s", getHighestExport(object$filepath)), sprintf("%d_result", i))
+unpackData <- function(dataProcessor, file_numbers) {
+  for (i in file_numbers) {
+    zipF <- file.path(dataProcessor$filepath, sprintf("export_%s", getHighestExport(dataProcessor$filepath)), sprintf("%d_result.zip", i))
+    outDir <- file.path(dataProcessor$filepath, sprintf("export_%s", getHighestExport(dataProcessor$filepath)), sprintf("%d_result", i))
     if (!dir.exists(outDir)) {
       dir.create(outDir)
     }
     tryCatch({
       unzip(zipF, exdir = outDir)
-      object$filepath <- outDir
+      dataProcessor$filepath <- outDir
       print(paste("Dateien erfolgreich entpackt nach:", outDir))
     }, error = function(e) {
       warning(paste("Fehler beim Entpacken von Dateien:", e$message))
@@ -50,10 +39,10 @@ unpackData <- function(object, indices) {
   }
 }
 
-processFiles <- function(object) {
+processFiles <- function(dataProcessor) {
   case_data <- bind_rows(
-    lapply(object$fileNumbers, function(i) {
-      file_path <- file.path(object$filepath, sprintf("%d_result\\test_data.txt", i))
+    lapply(dataProcessor$fileNumbers, function(i) {
+      file_path <- file.path(dataProcessor$filepath, sprintf("%d_result\\test_data.txt", i))
       if (file.exists(file_path)) {
         cat("nach if: ", file_path, "\n")
         read_delim(
@@ -66,8 +55,8 @@ processFiles <- function(object) {
         NULL
       }
     })
-  ) %>% filter(!is.null(aufnahme_ts) && nrow(.) > 0)
-  rm(list = paste0("case_data_", object$fileNumbers))
+  ) %>% dplyr::filter(!is.null(aufnahme_ts) && nrow(.) > 0)
+  rm(list = paste0("case_data_", dataProcessor$fileNumbers))
   return(case_data)
 }
 
@@ -97,7 +86,7 @@ performAnalysis <- function(case_data) {
   los_valid <- filterLosValid(los, num_of_cases)
   complete_db_Pand <- joinClinics(db, los_valid)
   timeframe <- calculateZeitraum(complete_db_Pand)
-  saveData(timeframe)  #TODO eventuell rausziehen oder im Python Script?
+  return(timeframe)
 }
 
 countKliniken <- function(case_data) {
@@ -119,8 +108,8 @@ filterLos <- function(db) {
   return(data.frame(favstats(db$los ~ db$klinik)))
 }
 
-filterLosValid <- function(los, anzahl_fälle) {
-  los <- left_join(los, anzahl_fälle)
+filterLosValid <- function(los, num_of_cases) {
+  los <- left_join(los, num_of_cases)
   los$np <- los$Freq - los$n
   los$np_prozent <- (los$np / los$Freq) * 100
   los <- los %>% dplyr::filter(np_prozent < 20)
@@ -142,11 +131,11 @@ calculateZeitraum <- function(complete_db_Pand, clinics, los) {
   timeframe <- complete_db_Pand %>%
     group_by(kalenderwoche_jahr, KW) %>%
     summarise(weighted.mean(los, klinik))
-  fallzahl <- calculateFallzahl(complete_db_Pand)
-  timeframe <- left_join(timeframe, fallzahl)
+  case_num <- calculateFallzahl(complete_db_Pand)
+  timeframe <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
   timeframe$Abweichung <- timeframe$`weighted.mean(los, klinik)` - timeframe$LOS_vor_Pand
-  timeframe <- mutate(timeframe, Veränderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
+  timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   clinics <- countKliniken(timeframe)
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getCurrentCalendarWeek()
@@ -178,13 +167,12 @@ calculateFallzahl <- function(complete_db_Pand) {
   return(df)
 }
 
-saveData <- function(timeframe) {
-  #TODO Ausgabepfad?
+saveData <- function(dataProcessor, timeframe) {
   write.table(
     timeframe,
     file = paste0(
       home_dir_windows,
-      "\\OneDrive - Uniklinik RWTH Aachen\\Desktop\\pandemieradar_sql\\LOS_2023-W22_to_2023-W25_20230629-094752.csv"
+      dataProcessor$filepath
     ),
     dec = ".",
     sep = ",",
@@ -193,6 +181,14 @@ saveData <- function(timeframe) {
   )
 }
 
+# filepath <- commandArgs(trailingOnly = TRUE)[1]
+filepath <- "C:\\Users\\mjavdoschin\\PycharmProjects\\LOC_Calculator\\libraries"
+dataProcessor <- DataProcessor(filepath)
+file_numbers <- c(1:3, 8:56, 58, 60, 67)
+unpackData(dataProcessor, file_numbers)
+case_data <- processFiles(dataProcessor)
+timeframe <- performAnalysis(case_data)
+saveData(dataProcessor, timeFrame)
 
 
 
