@@ -60,6 +60,17 @@ processFiles <- function(dataProcessor) {
   return(case_data)
 }
 
+performAnalysis <- function(case_data) {
+  filledCaseData <- fillCaseData(case_data)
+  num_of_cases <- countKliniken(filledCaseData)
+  db <- filterCases(filledCaseData)
+  los <- filterLos(db)
+  los_valid <- filterLosValid(los, num_of_cases)
+  complete_db_Pand <- joinClinics(db, los_valid)
+  timeframe <- calculateZeitraum(complete_db_Pand)
+  return(timeframe)
+}
+
 fillCaseData <- function(case_data) {
   case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts)
   case_data$triage_ts <- with_tz(case_data$triage_ts)
@@ -76,17 +87,6 @@ fillCaseData <- function(case_data) {
   )
   case_data$los <- difftime(case_data$entlassung_ts, case_data$ersterZeitpunkt, units = "mins")
   return(case_data)
-}
-
-performAnalysis <- function(case_data) {
-  filledCaseData <- fillCaseData(case_data)
-  num_of_cases <- countKliniken(filledCaseData)
-  db <- filterCases(filledCaseData)
-  los <- filterLos(db)
-  los_valid <- filterLosValid(los, num_of_cases)
-  complete_db_Pand <- joinClinics(db, los_valid)
-  timeframe <- calculateZeitraum(complete_db_Pand)
-  return(timeframe)
 }
 
 countKliniken <- function(case_data) {
