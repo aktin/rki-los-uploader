@@ -7,42 +7,26 @@ library(lubridate)
 library(mosaic)
 library(ISOweek)
 
-DataProcessor <- function(filepath) {
-  obj <- list(filepath = filepath)
-  class(obj) <- "DataProcessor"
-  return(obj)
-}
-
-getHighestExport <- function(filepath) {
-  subdirs <- list.dirs(filepath, full.names = FALSE, recursive = FALSE)
-  export_values <- as.numeric(sub("^export_([0-9]+)$", "\\1", subdirs))
-  if (length(export_values) == 0) {
-    return(0)
-  }
-  return(max(export_values))
-}
-
-unpackData <- function(dataProcessor, file_numbers) {
+unpackData <- function(filepath, file_numbers) {
   for (i in file_numbers) {
-    zipF <- file.path(dataProcessor$filepath, sprintf("export_%s", getHighestExport(dataProcessor$filepath)), sprintf("%d_result.zip", i))
-    outDir <- file.path(dataProcessor$filepath, sprintf("export_%s", getHighestExport(dataProcessor$filepath)), sprintf("%d_result", i))
+    zipF <- file.path(filepath, sprintf("%d_result.zip", i))
+    outDir <- file.path(filepath, sprintf("%d_result", i))
     if (!dir.exists(outDir)) {
       dir.create(outDir)
     }
     tryCatch({
       unzip(zipF, exdir = outDir)
-      dataProcessor$filepath <- outDir
-      print(paste("Dateien erfolgreich entpackt nach:", outDir))
+      print(paste("Data successfully unpacked in:", outDir))
     }, error = function(e) {
-      warning(paste("Fehler beim Entpacken von Dateien:", e$message))
+      warning(paste("An Error occurred unpacking the data:", e$message))
     })
   }
 }
 
-processFiles <- function(dataProcessor) {
+processFiles <- function(filepath, filenumbers) {
   case_data <- bind_rows(
-    lapply(dataProcessor$fileNumbers, function(i) {
-      file_path <- file.path(dataProcessor$filepath, sprintf("%d_result\\test_data.txt", i))
+    lapply(filenumbers, function(i) {
+      file_path <- file.path(filepath, sprintf("%d_result\\test_data.txt", i))
       if (file.exists(file_path)) {
         cat("nach if: ", file_path, "\n")
         read_delim(
@@ -62,12 +46,12 @@ processFiles <- function(dataProcessor) {
 
 performAnalysis <- function(case_data) {
   filledCaseData <- fillCaseData(case_data)
-  num_of_cases <- countKliniken(filledCaseData)
+  num_of_cases <- countClinics(filledCaseData)
   db <- filterCases(filledCaseData)
   los <- filterLos(db)
   los_valid <- filterLosValid(los, num_of_cases)
   complete_db_Pand <- joinClinics(db, los_valid)
-  timeframe <- calculateZeitraum(complete_db_Pand)
+  timeframe <- calculateTimeframe(complete_db_Pand)
   return(timeframe)
 }
 
@@ -89,7 +73,7 @@ fillCaseData <- function(case_data) {
   return(case_data)
 }
 
-countKliniken <- function(case_data) {
+countClinics <- function(case_data) {
   num_of_cases <- data.frame(table(case_data$klinik))
   colnames(num_of_cases)[1] <- "klinik"
   return(num_of_cases)
@@ -127,16 +111,16 @@ joinClinics <- function(db, los_valid) {
   return(complete_db_Pand, clinics)
 }
 
-calculateZeitraum <- function(complete_db_Pand, clinics, los) {
+calculateTimeframe <- function(complete_db_Pand, clinics, los) {
   timeframe <- complete_db_Pand %>%
     group_by(kalenderwoche_jahr, KW) %>%
     summarise(weighted.mean(los, klinik))
-  case_num <- calculateFallzahl(complete_db_Pand)
+  case_num <- calculateCaseNumber(complete_db_Pand)
   timeframe <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
   timeframe$Abweichung <- timeframe$`weighted.mean(los, klinik)` - timeframe$LOS_vor_Pand
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
-  clinics <- countKliniken(timeframe)
+  clinics <- countClinics(timeframe)
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getCurrentCalendarWeek()
   timeframe <- timeframe %>% dplyr::filter(KW != as.character(calendarweek-1) & KW != as.character(calendarweek+4))
@@ -150,29 +134,29 @@ calculateZeitraum <- function(complete_db_Pand, clinics, los) {
 }
 
 getCurrentCalendarWeek <- function() {
-  heutiges_datum <- Sys.Date()
-  erster_tag_monat <- floor_date(heutiges_datum, "month")
-  erste_kw <- isoweek(erster_tag_monat)
-  return(erste_kw)
+  current_date <- Sys.Date()
+  first_day_in_month <- floor_date(current_date, "month")
+  first_cw_in_month <- isoweek(first_day_in_month)
+  return(first_cw_in_month)
 }
 
-calculateFallzahl <- function(complete_db_Pand) {
+calculateCaseNumber <- function(complete_db_Pand) {
   case_num <- data.frame(table(complete_db_Pand$kalenderwoche_jahr, complete_db_Pand$KW, complete_db_Pand$klinik))
   df <- case_num %>%
     group_by(Var1, Var2) %>%
     summarise(mean_Fallzahl = mosaic::mean(Freq, na.rm = TRUE))
   df <- df %>% dplyr::filter(mean_Fallzahl != 0)
-  colnames(df) <- c("kalenderwoche_jahr", "KW", "mean_Fallzahl")
+  colnames(df) <- c("calendarweek_year", "KW", "mean_case_number")
   df$KW <- as.character(df$KW)
   return(df)
 }
 
-saveData <- function(dataProcessor, timeframe) {
+saveData <- function(filepath, timeframe) {
   write.table(
     timeframe,
     file = paste0(
       home_dir_windows,
-      dataProcessor$filepath
+      filepath
     ),
     dec = ".",
     sep = ",",
@@ -183,12 +167,11 @@ saveData <- function(dataProcessor, timeframe) {
 
 # filepath <- commandArgs(trailingOnly = TRUE)[1]
 filepath <- "C:\\Users\\mjavdoschin\\PycharmProjects\\LOC_Calculator\\libraries"
-dataProcessor <- DataProcessor(filepath)
-file_numbers <- c(1:3, 8:56, 58, 60, 67)
-unpackData(dataProcessor, file_numbers)
-case_data <- processFiles(dataProcessor)
+file_numbers <- c(1:3, 8:35,37:44,47:52,55,56, 60, 68,69,70)
+unpackData(filepath, file_numbers)
+case_data <- processFiles(filepath, filenumbers)
 timeframe <- performAnalysis(case_data)
-saveData(dataProcessor, timeFrame)
+saveData(filepath, timeFrame)
 
 
 
