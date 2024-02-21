@@ -13,7 +13,7 @@ library(mosaic)
 # Einlesen der Export-nummer Anpassen
 export <- "2190"
 # Verzeichnis der Exporte Anpassen
-fileort <- "C:\\Users\\mjavdoschin\\PycharmProjects\\LOC_Calculator\\libraries\\test_data.txt"
+fileort <- "C:/Users/mjavdoschin/PycharmProjects/LOC_Calculator/libraries/broker_test_results.zip"
 
 # Enpacken der Daten
 for (i in c(1:3, 8:56, 58, 60,67)) {
@@ -28,7 +28,7 @@ file_numbers <- c(1:3, 8:44,48:58, 60, 67)
 # Einlesen und Verarbeiten der Dateien
 case_data <- lapply(file_numbers, function(i) {
   home_dir_windows <- Sys.getenv("USERPROFILE")
-  file_path <- sprintf(paste0(home_dir_windows,"\\OneDrive - Uniklinik RWTH Aachen\\Desktop\\pandemieradar_sql\\export_9999\\%d_result\\test_data.txt"), i)
+  file_path <- sprintf(paste0(home_dir_windows,"C:/Users/mjavdoschin/PycharmProjects/LOC_Calculator/libraries"), i)
   if (file.exists(file_path)) {
     print(paste("nach if: ",file_path))
     read_delim(file_path, 
