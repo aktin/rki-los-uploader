@@ -9,12 +9,13 @@ library(ISOweek)
 
 unpackFirstZip <- function(inDir, exDir) {
   tryCatch({
-      unzip(inDir, exdir = exDir)
-      print(paste("Data from", inDir," successfully unpacked in:", exDir))
+    unzip(inDir, exdir = exDir)
+    print(paste("Data from", inDir, "successfully unpacked in:", exDir))
     return(exDir)
-    }, error = function(e) {
-      warning(paste("An error occurred unpacking the data:", e$message))
-    })
+  }, error = function(e) {
+    warning(paste("An error occurred unpacking the data:", e$message))
+    return(NULL)  # Return a value in case of error
+  })
 }
 
 #' This function unpacks the data from the given path to a zip file
@@ -22,7 +23,7 @@ unpackFirstZip <- function(inDir, exDir) {
 #' @param filenumbers: IDs of the clinics, whose data is to be calculated
 unpackRestData <- function(inDir, exDir, file_numbers) {
   for (i in file_numbers) {
-    inDirZip <- file.path(inDir, sprintf("%d_result.zip", i))  #TODO Hier weiter schauen
+    inDirZip <- file.path(inDir, sprintf("%d_result.zip", i))
     exDirZip <- file.path(exDir, sprintf("%d_result", i))
     if (!dir.exists(exDirZip)) {
       dir.create(exDirZip)
@@ -44,15 +45,15 @@ processFiles <- function(filepath, filenumbers) {
         read_delim(
           filepath,
           delim = "\t", escape_double = FALSE,
-          col_types = cols(aufnahme_ts = col_datetime(), discharge_ts = col_datetime(), triage_ts = col_datetime()),
+          col_types = cols(aufnahme_ts = col_datetime(), entlassung_ts = col_datetime(), triage_ts = col_datetime()),
           trim_ws = TRUE
-        ) %>% mutate(clinic = i)
+        ) %>% mutate(clinic = i) #TODO Hashmap for german to english
       } else {
         NULL
       }
     })
   ) %>% dplyr::filter(!is.null(aufnahme_ts) && nrow(.) > 0)
-  rm(list = paste0("case_data_", dataProcessor$fileNumbers))
+  rm(list = paste0("case_data_", filenumbers))
   return(case_data)
 }
 
@@ -193,8 +194,8 @@ removeTrailingFileFromPath <- function(filepath) {
 }
 
 # filepath <- commandArgs(trailingOnly = TRUE)[1]
-filepath <- "C:/Users/mjavdoschin/PycharmProjects/LOC_Calculator/libraries/broker_test_results.zip"
-exDir <- removeTrailingFileFromPath
+filepath <- "C:/Users/User/PycharmProjects/LOC_Calculator/libraries/broker_test_results.zip"
+exDir <- removeTrailingFileFromPath(filepath)
 # file_numbers <- c(1:3, 8:35,37:44,47:52,55,56, 60, 68,69,70)
 file_numbers <- c(1, 2)
 newInDir <- unpackFirstZip(filepath, exDir)
