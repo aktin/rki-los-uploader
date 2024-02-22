@@ -6,6 +6,7 @@ library(tidyverse)
 library(lubridate)
 library(mosaic)
 library(ISOweek)
+library(r2r)
 
 unpackFirstZip <- function(inDir, exDir) {
   tryCatch({
@@ -191,6 +192,12 @@ removeTrailingFileFromPath <- function(filepath) {
   } else {
     print("Kein '/' gefunden.")
   }
+}
+
+tablenameToEng <- function(var) {
+  m <- hashmap()
+  m[c("aufnahme_ts", "entlassung_ts", 3)] <- c("admission_ts", "discharge_ts", "c")
+  return(m[var])
 }
 
 # filepath <- commandArgs(trailingOnly = TRUE)[1]
