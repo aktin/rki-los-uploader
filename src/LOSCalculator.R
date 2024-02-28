@@ -41,20 +41,21 @@ unpackRestData <- function(inDir, exDir, file_numbers) {
 processFiles <- function(filepath, filenumbers) {
   case_data <- bind_rows(
     lapply(filenumbers, function(i) {
-      filepath <- file.path(filepath, sprintf("%d_result\\case_data.txt", i))
+      filepath <- file.path(filepath, sprintf("%d_result/case_data.txt", i))
+      print(paste("This is used in processFiles: ", filepath))
       if (file.exists(filepath)) {
         read_delim(
           filepath,
           delim = "\t", escape_double = FALSE,
           col_types = cols(aufnahme_ts = col_datetime(), entlassung_ts = col_datetime(), triage_ts = col_datetime()),
           trim_ws = TRUE
-        ) %>% mutate(clinic = i) #TODO Hashmap for german to english
+        ) %>% mutate(clinic = i)
       } else {
         NULL
       }
     })
   ) %>% dplyr::filter(!is.null(aufnahme_ts) && nrow(.) > 0)
-  rm(list = paste0("case_data_", filenumbers))
+  rm(list = paste0("case_data_", filenumbers)) # maybe not needed
   return(case_data)
 }
 
@@ -66,24 +67,24 @@ performAnalysis <- function(case_data) {
   los <- filterLos(db)
   los_valid <- filterLosValid(los, num_of_cases)
   complete_db_Pand <- joinClinics(db, los_valid)
-  timeframe <- calculateTimeframe(complete_db_Pand)
+  timeframe <- calculateTimeframe(complete_db_Pand, los_valid)
   return(timeframe)
 }
 
 # fills the case_data dataframe with info
 fillCaseData <- function(case_data) {
-  case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts)
+  case_data$admission_ts <- with_tz(case_data$aufnahme_ts)
   case_data$triage_ts <- with_tz(case_data$triage_ts)
-  case_data$discharge_ts <- with_tz(case_data$discharge_ts)
-  case_data$jahr <- year(case_data$aufnahme_ts)
-  case_data$cw <- format(case_data$aufnahme_ts, "%V")
-  case_data$calendarweek_year <- format(case_data$aufnahme_ts, "%G")
-  case_data$earliest_ts <- as.integer(case_data$aufnahme_ts > case_data$triage_ts)
-  case_data$Vergleich <- ifelse(is.na(case_data$triage_ts), 0, as.integer(case_data$aufnahme_ts > case_data$triage_ts))
+  case_data$discharge_ts <- with_tz(case_data$entlassung_ts)
+  case_data$jahr <- year(case_data$admission_ts)
+  case_data$cw <- format(case_data$admission_ts, "%V")
+  case_data$calendarweek_year <- format(case_data$admission_ts, "%G")
+  case_data$earliest_ts <- as.integer(case_data$admission_ts > case_data$triage_ts)
+  case_data$Vergleich <- ifelse(is.na(case_data$triage_ts), 0, as.integer(case_data$admission_ts > case_data$triage_ts))
   case_data$earliest_ts <- ifelse(
     is.na(case_data$triage_ts),
-    format(case_data$aufnahme_ts, "%Y-%m-%d %H:%M:%S"),
-    format(pmax(case_data$aufnahme_ts, case_data$triage_ts), "%Y-%m-%d %H:%M:%S")
+    format(case_data$admission_ts, "%Y-%m-%d %H:%M:%S"),
+    format(pmax(case_data$admission_ts, case_data$triage_ts), "%Y-%m-%d %H:%M:%S")
   )
   case_data$los <- difftime(case_data$discharge_ts, case_data$earliest_ts, units = "mins")
   return(case_data)
@@ -105,14 +106,20 @@ filterCases <- function(case_data) {
   return(db)
 }
 
+# filterLos <- function(db) {
+#   return(data.frame(favstats(db$los ~ db$clinic)))
+# }
+
 filterLos <- function(db) {
-  return(data.frame(favstats(db$los ~ db$clinic)))
+  result <- data.frame(favstats(db$los ~ db$clinic))
+  names(result)[1] <- "clinic"  # Ändert den Namen der zweiten Spalte in "clinic"
+  return(result)
 }
 
 filterLosValid <- function(los, num_of_cases) {
-  los <- left_join(los, num_of_cases)
-  los$np <- los$freq - los$n
-  los$np_prozent <- (los$np / los$freq) * 100
+  los <- left_join(los, num_of_cases, by="clinic")
+  los$np <- los$Freq - los$n
+  los$np_prozent <- (los$np / los$Freq) * 100
   los <- los %>% dplyr::filter(np_prozent < 20)
   los <- los %>% dplyr::filter(mean < 300)
   los <- data.frame(los$clinic)
@@ -124,11 +131,11 @@ filterLosValid <- function(los, num_of_cases) {
 joinClinics <- function(db, los_valid) {
   complete_db_Pand <- left_join(los_valid, db)
   complete_db_Pand <- complete_db_Pand %>% dplyr::filter(clinic != 33)
-  clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
-  return(complete_db_Pand, clinics)
+  return(complete_db_Pand)
 }
 
-calculateTimeframe <- function(complete_db_Pand, clinics, los) {
+calculateTimeframe <- function(complete_db_Pand, los) {
+  clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
   timeframe <- complete_db_Pand %>%
     group_by(calendarweek_year, cw) %>%
     summarise(weighted.mean(los, clinic))
@@ -137,7 +144,6 @@ calculateTimeframe <- function(complete_db_Pand, clinics, los) {
   timeframe$LOS_vor_Pand <- 193.5357
   timeframe$Abweichung <- timeframe$`weighted.mean(los, clinic)` - timeframe$LOS_vor_Pand
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
-  clinics <- countClinics(timeframe)
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getFirstCalendarWeekOfCurrentMonth()
   timeframe <- timeframe %>% dplyr::filter(cw != as.character(calendarweek-1) & cw != as.character(calendarweek+4))
@@ -162,7 +168,7 @@ calculateCaseNumber <- function(complete_db_Pand) {
   case_num <- data.frame(table(complete_db_Pand$calendarweek_year, complete_db_Pand$cw, complete_db_Pand$clinic))
   df <- case_num %>%
     group_by(Var1, Var2) %>%
-    summarise(mean_case_number = mosaic::mean(freq, na.rm = TRUE))
+    summarise(mean_case_number = mosaic::mean(Freq, na.rm = TRUE))
   df <- df %>% dplyr::filter(mean_case_number != 0)
   colnames(df) <- c("calendarweek_year", "cw", "mean_case_number")
   df$cw <- as.character(df$cw)
@@ -196,18 +202,18 @@ removeTrailingFileFromPath <- function(filepath) {
 
 tablenameToEng <- function(var) {
   m <- hashmap()
-  m[c("aufnahme_ts", "entlassung_ts", 3)] <- c("admission_ts", "discharge_ts", "c")
+  m[c("admission_ts", "discharge_ts", 3)] <- c("aufnahme_ts", "entlassung_ts", "c")
   return(m[var])
 }
 
 # filepath <- commandArgs(trailingOnly = TRUE)[1]
-filepath <- "C:/Users/User/PycharmProjects/LOC_Calculator/libraries/broker_test_results.zip"
+filepath <- "C:/Users/mjavdoschin/PycharmProjects/LOC_Calculator/libraries/broker_test_results.zip"
 exDir <- removeTrailingFileFromPath(filepath)
 # file_numbers <- c(1:3, 8:35,37:44,47:52,55,56, 60, 68,69,70)
-file_numbers <- c(1, 2)
+file_numbers <- c(1, 2) # for testing
 newInDir <- unpackFirstZip(filepath, exDir)
 unpackRestData(newInDir, exDir, file_numbers)
-case_data <- processFiles(newInDir, file_numbers)
+case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
 saveData(exDir, timeframe)
 
