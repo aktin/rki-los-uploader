@@ -212,8 +212,19 @@ tablenameToEng <- function(var) {
   return(m[var])
 }
 
+getHospitalNumbers <- function(path) {
+  file_list <- list.files(path = path)
+  zip_files <- file_list[grep("\\.zip", file_list)]
+  hospital_numbers <- list()
+  for(filename in zip_files) {
+     hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
+  }
+  return(hospital_numbers)
+} 
+
 
 filepath <- "C:\\Users\\wilia\\PycharmProjects\\LOC_Calculator\\libraries\\broker_test_results.zip"
+# Path to extraction location
 exDir <- paste0(removeTrailingFileFromPath(filepath),"\\broker_result")
 if(!dir.exists(exDir)) {
   dir.create(exDir)
@@ -223,15 +234,9 @@ if(!dir.exists(exDir)) {
 }
 
 # file_numbers <- c(1:3, 8:35,37:44,47:52,55,56, 60, 68,69,70)
-file_numbers <- c(1, 2) # TODO create method that gets all clinic numbers from broker_result
+file_numbers <- getHospitalNumbers(exDir)
 unpackZip(filepath, exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
 write.csv(timeframe, file.path(exDir, "timeframe.csv"), row.names = FALSE)
-
-
-
-
-
-
