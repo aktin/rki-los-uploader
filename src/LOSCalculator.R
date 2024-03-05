@@ -5,10 +5,13 @@ library(readr)
 library(tidyverse)
 library(lubridate)
 library(mosaic)
+conflicts_prefer(mosaic::max)
+
+install.packages("ISOweek")
 library(ISOweek)
 library(r2r)
 
-unpackFirstZip <- function(inDir, exDir) {
+unpackZip <- function(inDir, exDir) {
   tryCatch({
     unzip(inDir, exdir = exDir)
     print(paste("Data from", inDir, "successfully unpacked in:", exDir))
@@ -21,10 +24,10 @@ unpackFirstZip <- function(inDir, exDir) {
 
 #' This function unpacks the data from the given path to a zip file
 #' @param inDir: path to a zip file fetched from the broker
-#' @param filenumbers: IDs of the clinics, whose data is to be calculated
-unpackRestData <- function(inDir, exDir, file_numbers) {
+#' @param file_numbers: IDs of the clinics, whose data is to be calculated
+unpackClinicResult <- function(exDir, file_numbers) {
   for (i in file_numbers) {
-    inDirZip <- file.path(inDir, sprintf("%d_result.zip", i))
+    inDirZip <- file.path(exDir, sprintf("%d_result.zip", i))
     exDirZip <- file.path(exDir, sprintf("%d_result", i))
     if (!dir.exists(exDirZip)) {
       dir.create(exDirZip)
@@ -38,10 +41,15 @@ unpackRestData <- function(inDir, exDir, file_numbers) {
   }
 }
 
-processFiles <- function(filepath, filenumbers) {
+#' This function uses the unpacked zip archives from the broker results that 
+#' contain result sets for each hospital. It adds the hospital number as a new column.
+#' At the end a dataframe with all hospital results is created, identified by the hospital number
+#' @param filepath the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
+#' @param file_numbers hospital numbers in directory name to identify corresponding hospital
+processFiles <- function(filepath, file_numbers) {
   case_data <- bind_rows(
-    lapply(filenumbers, function(i) {
-      filepath <- file.path(filepath, sprintf("%d_result/case_data.txt", i))
+    lapply(file_numbers, function(i) {
+      filepath <- file.path(filepath, sprintf("%d_result\\case_data.txt", i))
       print(paste("This is used in processFiles: ", filepath))
       if (file.exists(filepath)) {
         read_delim(
@@ -55,7 +63,6 @@ processFiles <- function(filepath, filenumbers) {
       }
     })
   ) %>% dplyr::filter(!is.null(aufnahme_ts) && nrow(.) > 0)
-  rm(list = paste0("case_data_", filenumbers)) # maybe not needed
   return(case_data)
 }
 
@@ -106,9 +113,6 @@ filterCases <- function(case_data) {
   return(db)
 }
 
-# filterLos <- function(db) {
-#   return(data.frame(favstats(db$los ~ db$clinic)))
-# }
 
 filterLos <- function(db) {
   result <- data.frame(favstats(db$los ~ db$clinic))
@@ -190,15 +194,17 @@ saveData <- function(filepath, timeframe) {
 }
 
 removeTrailingFileFromPath <- function(filepath) {
-  index <- mosaic::max(gregexpr("/", filepath)[[1]])
-  if (index != -1) {
+  regex <- "\\\\"
+  index <- max(gregexpr(regex, filepath)[[1]])
+  if (index > 1) {
     exDir <- substr(filepath, 1, index - 1)
     print(exDir)
     return(exDir)
   } else {
-    print("Kein '/' gefunden.")
+    print(paste("Kein'", regex, "'gefunden."))
   }
 }
+
 
 tablenameToEng <- function(var) {
   m <- hashmap()
@@ -206,16 +212,23 @@ tablenameToEng <- function(var) {
   return(m[var])
 }
 
-# filepath <- commandArgs(trailingOnly = TRUE)[1]
-filepath <- "C:/Users/mjavdoschin/PycharmProjects/LOC_Calculator/libraries/broker_test_results.zip"
-exDir <- removeTrailingFileFromPath(filepath)
+
+filepath <- "C:\\Users\\wilia\\PycharmProjects\\LOC_Calculator\\libraries\\broker_test_results.zip"
+exDir <- paste0(removeTrailingFileFromPath(filepath),"\\broker_result")
+if(!dir.exists(exDir)) {
+  dir.create(exDir)
+  print(paste("Directory", exDir, "created."))
+} else {
+  print(paste("Directory", exDir, "already exists."))
+}
+
 # file_numbers <- c(1:3, 8:35,37:44,47:52,55,56, 60, 68,69,70)
-file_numbers <- c(1, 2) # for testing
-newInDir <- unpackFirstZip(filepath, exDir)
-unpackRestData(newInDir, exDir, file_numbers)
+file_numbers <- c(1, 2) # TODO create method that gets all clinic numbers from broker_result
+unpackZip(filepath, exDir)
+unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
-saveData(exDir, timeframe)
+write.csv(timeframe, file.path(exDir, "timeframe.csv"), row.names = FALSE)
 
 
 
