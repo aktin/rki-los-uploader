@@ -4,6 +4,8 @@ library(dplyr)
 library(readr)
 library(tidyverse)
 library(lubridate)
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+install.packages("mosaic")
 library(mosaic)
 conflicts_prefer(mosaic::max)
 
@@ -223,9 +225,15 @@ getHospitalNumbers <- function(path) {
 } 
 
 
-filepath <- "C:\\Users\\wilia\\PycharmProjects\\LOC_Calculator\\libraries\\broker_test_results.zip"
+# args contains the path variable to the resource directory given by the python script executing this script
+args <- commandArgs(trailingOnly=TRUE)
+
+# Access the path variable passed from Python
+filepath <- args[1]
+
 # Path to extraction location
 exDir <- paste0(removeTrailingFileFromPath(filepath),"\\broker_result")
+
 if(!dir.exists(exDir)) {
   dir.create(exDir)
   print(paste("Directory", exDir, "created."))
@@ -239,4 +247,5 @@ unpackZip(filepath, exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
+print(timeframe)
 write.csv(timeframe, file.path(exDir, "timeframe.csv"), row.names = FALSE)

@@ -100,7 +100,7 @@ class SftpFileManager:
 
 class BrokerRequestResultManager:
     """
-    A class for managing request results from the AKTIN Broker.
+    A class for managing request results from the AKTIN Broker. The AKTIN Broker is the data source from where our data is beeing imported.
     """
     __timeout = 10
 
@@ -193,12 +193,36 @@ def main(path_toml: str):
         [logging.root.removeHandler(handler) for handler in logging.root.handlers[:]]
         logging.shutdown()
 
+def set_path_variable():
+    """
+    This Method sets the path variable in an Windows environment. This is necessary for executing the Rscript for
+    Length of stay.
+    :return:
+    """
+    # Specify the directory containing Rscript.exe
+    r_bin_dir = "C:/Program Files/R/R-4.3.1/bin"  # TODO this path has to be changed for each installation, maybe console input
+
+    # Get the current value of the PATH environment variable
+    current_path = os.environ.get('PATH', '')
+
+    # Append the R bin directory to the PATH, separating it with the appropriate separator
+    new_path = f"{current_path};{r_bin_dir}" if current_path else r_bin_dir
+
+    # Update the PATH environment variable
+    os.environ['PATH'] = new_path
+
+def execute_rscript():
+    work_directory = os.getcwd()
+    variable_for_r = os.path.join(work_directory, "resources\\broker_test_results.zip")
+    r_script_path = os.path.join(work_directory, "LOSCalculator.R")
+    set_path_variable()
+    subprocess.call(['Rscript', r_script_path, variable_for_r])
+
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         raise SystemExit('path to config TOML is missing!')
     main(sys.argv[1])
+    execute_rscript()
 
-    r_script_path = "dein_r_skript.R"
-    fileort = "/Pfad/zum/Ordner"
-    subprocess.run(["Rscript", r_script_path, fileort])
