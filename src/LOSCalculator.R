@@ -49,23 +49,45 @@ unpackClinicResult <- function(exDir, file_numbers) {
 #' @param filepath the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
 #' @param file_numbers hospital numbers in directory name to identify corresponding hospital
 processFiles <- function(filepath, file_numbers) {
-  case_data <- bind_rows(
-    lapply(file_numbers, function(i) {
-      filepath <- file.path(filepath, sprintf("%d_result\\case_data.txt", i))
-      print(paste("This is used in processFiles: ", filepath))
-      if (file.exists(filepath)) {
-        read_delim(
-          filepath,
-          delim = "\t", escape_double = FALSE,
-          col_types = cols(aufnahme_ts = col_datetime(), entlassung_ts = col_datetime(), triage_ts = col_datetime()),
-          trim_ws = TRUE
-        ) %>% mutate(clinic = i)
+  filepath <- exDir
+  # TODO aufnahme_ts, dann triage_ts. 2. beim laden der datei prüfen ob alle wichtigen spalten da sind (aufnahme, triage, entlassung)
+  all_data_df <- data.frame()
+  for (i in file_numbers) {
+    filepath_i <- file.path(filepath, sprintf("%d_result\\case_data.txt", i), fsep = "\\")
+    print(paste("This is used in processFiles: ", filepath_i))
+    if (file.exists(filepath_i)) {
+      df <- read_delim(
+        filepath_i,
+        delim = "\t", escape_double = FALSE,
+        trim_ws = TRUE
+      ) %>% mutate(clinic = i)
+      print(df)
+      print(colnames(df))
+      if ("entlassung_ts" %in% colnames(df)) {
+        print("entlassung success!!!!!!!!!")
+        if ("aufnahme_ts" %in% colnames(df)) {
+          if(nrow(df[is.na(df$aufnahme_ts),])==0) {
+            all_data_df <- rbind(all_data_df, df) 
+          } else if("triage_ts" %in% colnames(df)) {
+            df <- df[!is.na(df$aufnahme_ts) & !is.na(df$triage_ts), ]  #remove rows without "aufnahme_ts" and "triage_ts"
+            df$aufnahme_ts[is.na(df$aufnahme_ts)] <- df$triage_ts[is.na(df$aufnahme_ts)]  # Copy "triage_ts" value to "aufnahme_ts" where "aufnahme_ts" is empty
+            all_data_df <- rbind(all_data_df, df) 
+          } else {
+            print(paste('No triage column found, but needed because aufnahme_ts has empty values: ',filepath_i))
+          }
+        
+        } 
       } else {
+        print(paste('No entlassung_ts found in: ', filepath_i))
         NULL
       }
-    })
-  ) %>% dplyr::filter(!is.null(aufnahme_ts) && nrow(.) > 0)
-  return(case_data)
+      
+    } else {
+      NULL
+    }
+  }
+  
+  return(all_data_df)
 }
 
 # performs various methods on the extracted data
@@ -227,9 +249,10 @@ getHospitalNumbers <- function(path) {
 
 # args contains the path variable to the resource directory given by the python script executing this script
 args <- commandArgs(trailingOnly=TRUE)
-
 # Access the path variable passed from Python
 filepath <- args[1]
+
+filepath <- 'C:\Users\whoy\PycharmProjects\LOC_Calculator\src\resources'
 
 # Path to extraction location
 exDir <- paste0(removeTrailingFileFromPath(filepath),"\\broker_result")
@@ -241,11 +264,12 @@ if(!dir.exists(exDir)) {
   print(paste("Directory", exDir, "already exists."))
 }
 
-# file_numbers <- c(1:3, 8:35,37:44,47:52,55,56, 60, 68,69,70)
-file_numbers <- getHospitalNumbers(exDir)
+# file_numbers <- c(1:3, 8:35,37:44,47:52,55,56,60, 68,69,70)
 unpackZip(filepath, exDir)
+file_numbers <- getHospitalNumbers(exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
 print(timeframe)
 write.csv(timeframe, file.path(exDir, "timeframe.csv"), row.names = FALSE)
+

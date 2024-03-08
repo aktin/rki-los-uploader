@@ -6,6 +6,7 @@ import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
+import shutil
 
 import paramiko
 import requests
@@ -19,9 +20,9 @@ class Manager:
 
     def __init__(self, path_toml: str):
         self.__verify_and_load_toml(path_toml)
-        # self.__broker = BrokerRequestResultManager()
-        # self.__sftp = SftpFileManager()
-        # self.__xml = StatusXmlManager()
+        self.__broker = BrokerRequestResultManager()
+        self.__sftp = SftpFileManager()
+        self.__xml = StatusXmlManager()
 
     def __flatten_dict(self, d, parent_key='', sep='.'):
         items = []
@@ -59,7 +60,9 @@ class SftpFileManager:
     A class for managing file operations with an SFTP server.
     """
 
-    def __init__(self):
+    def __init__(self, config_file="config.toml"):
+        config = toml.load(config_file)
+
         self.__sftp_host = os.environ['SFTP.HOST']
         self.__sftp_username = os.environ['SFTP.USERNAME']
         self.__sftp_password = os.environ['SFTP.PASSWORD']
@@ -104,11 +107,13 @@ class BrokerRequestResultManager:
     """
     __timeout = 10
 
-    def __init__(self):
-        self.__broker_url = os.environ['BROKER.URL']
-        self.__admin_api_key = os.environ['BROKER.API_KEY']
-        self.__tag_requests = os.environ['REQUESTS.TAG']
-        self.__working_dir = os.environ['MISC.WORKING_DIR']
+    def __init__(self, config_file="config.toml"):
+        config = toml.load(config_file)
+
+        self.__broker_url = config['broker']['url']
+        self.__admin_api_key = config['broker']['api_key']
+        self.__tag_requests = config['requests']['tag']
+        self.__working_dir = os.getcwd()    #TODO check if working dir should be stated in toml or read automatically like here
         self.__check_broker_server_availability()
 
     def __check_broker_server_availability(self):
@@ -164,7 +169,7 @@ class BrokerRequestResultManager:
         url = self.__append_to_broker_url('broker', 'download', id_export)
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
-        zip_file_path = os.path.join(self.__working_dir, f'{id_request}_result.zip')
+        zip_file_path = os.path.join(self.__working_dir, "resources", f'{id_request}_result.zip')
         with open(zip_file_path, 'wb') as zip_file:
             zip_file.write(response.content)
         return zip_file_path
@@ -181,17 +186,64 @@ class BrokerRequestResultManager:
         return list_request_id
 
 
-def main(path_toml: str):
-    try:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
-                            handlers=[logging.StreamHandler()])
-        manager = Manager(path_toml)
-        manager.upload_tagged_results_to_sftp()
-    except Exception as e:
-        logging.exception(e)
-    finally:
-        [logging.root.removeHandler(handler) for handler in logging.root.handlers[:]]
-        logging.shutdown()
+class BrokerRequestIDManager:
+    """
+    A class to manage requests IDs.
+    """
+    __timeout = 10
+
+    def __init__(self, config_file="config.toml"):
+        config = toml.load(config_file)
+
+        self.__broker_url = config['broker']['url']
+        self.__admin_api_key = config['broker']['api_key']
+        self.__tag_requests = config['requests']['tag']
+        self.__working_dir = config['misc']['working_dir']
+        self.__check_broker_server_availability()
+
+    def __check_broker_server_availability(self):
+        url = self.__append_to_broker_url('broker', 'status')
+        try:
+            response = requests.head(url, timeout=self.__timeout)
+            response.raise_for_status()
+        except requests.exceptions.Timeout:
+            raise SystemExit('Connection to AKTIN Broker timed out')
+        except requests.exceptions.HTTPError as err:
+            raise SystemExit(f'HTTP error occurred: {err}')
+        except requests.exceptions.RequestException as err:
+            raise SystemExit(f'An ambiguous error occurred: {err}')
+
+    def __append_to_broker_url(self, *items: str) -> str:
+        url = self.__broker_url
+        for item in items:
+            url = f'{url}/{item}'
+        return url
+
+    def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
+        """
+        HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
+        """
+        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
+                'Accept': mediatype}
+
+    def request_highest_id_by_tag_from_broker(self, tag='pandemieradar') -> int:
+        """
+        Requests the highest ID for a given tag from AKTIN Broker. Highest ID = latest entry
+        :return: id of the last result
+        """
+        url = self.__append_to_broker_url('broker', 'request', 'filtered')
+        url = '?'.join([url, urllib.parse.urlencode(
+            {'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
+        response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+        response.raise_for_status()
+
+        # TODO merge the two iterations to one
+        # TODO return type should be int
+        list_request_id = [element.get('id') for element in et.fromstring(response.content)]
+        if len(list_request_id) < 1:
+            raise Exception(f"no element with tag:\"{tag}\" was found!")
+        return max(list_request_id)
+
 
 def set_path_variable():
     """
@@ -211,18 +263,49 @@ def set_path_variable():
     # Update the PATH environment variable
     os.environ['PATH'] = new_path
 
-def execute_rscript():
-    work_directory = os.getcwd()
-    variable_for_r = os.path.join(work_directory, "resources\\broker_test_results.zip")
-    r_script_path = os.path.join(work_directory, "LOSCalculator.R")
-    set_path_variable()
-    subprocess.call(['Rscript', r_script_path, variable_for_r])
 
+def execute_rscript(broker_result_zip_path: str, rscript_path: str):
+    set_path_variable()
+    result = subprocess.call(['Rscript', rscript_path, broker_result_zip_path])
+    return(result)
+
+
+def delete_contents_of_dir(_dir):
+    try:
+        # Use shutil.rmtree to remove all files and subdirectories within the directory
+        shutil.rmtree(_dir)
+        # Recreate the directory if needed
+        os.mkdir(_dir)
+        print(f"Contents of '{_dir}' have been deleted.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         raise SystemExit('path to config TOML is missing!')
-    main(sys.argv[1])
-    execute_rscript()
+    path_toml = sys.argv[1]
+
+    work_directory = os.getcwd()
+    # construct path to length of stay calculating r script
+    r_script_path = os.path.join(work_directory, "LOSCalculator.R")
+    # construct path to resource folder
+    broker_result_path = os.path.join(work_directory, 'resources')
+    # delete resources folder
+    delete_contents_of_dir(broker_result_path)
+
+    broker_id_manager = BrokerRequestIDManager(path_toml)
+    broker_manager = BrokerRequestResultManager(path_toml)
+
+    request_id = broker_id_manager.request_highest_id_by_tag_from_broker("BMG")
+    zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
+
+    r_result = execute_rscript(zip_file_path, r_script_path)
+
+    sftp_manager = SftpFileManager()
+    sftp_files = sftp_manager.list_files()
+    for sftp_file in sftp_files:
+        sftp_manager.delete_file(sftp_file)
+    sftp_manager.upload_file(os.path.join(broker_result_path, "broker_result\\timeframe.csv"))  # TODO return timeframe file from r script
+
 

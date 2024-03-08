@@ -1,0 +1,16 @@
+[broker]
+url = "https://aktin-test-broker.klinikum.rwth-aachen.de"
+api_key = "xxxAdmin1234"
+
+[requests]
+tag = "pandemieradar"
+
+[misc]
+working_dir = "C:/Users/whoy/PycharmProjects/LOC_Calculator/src"
+
+[SFTP]
+HOST = "127.0.0.1"
+USERNAME = "sftpuser"
+PASSWORD = "sftppassword"
+TIMEOUT = "25"
+FOLDERNAME = "rki"
