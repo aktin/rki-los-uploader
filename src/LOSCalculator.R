@@ -8,6 +8,7 @@ options(repos = c(CRAN = "https://cran.rstudio.com/"))
 install.packages("mosaic")
 library(mosaic)
 conflicts_prefer(mosaic::max)
+conflicts_prefer(mosaic::mean)
 
 install.packages("ISOweek")
 library(ISOweek)
@@ -98,7 +99,7 @@ performAnalysis <- function(case_data) {
   los <- filterLos(db)
   los_valid <- filterLosValid(los, num_of_cases)
   complete_db_Pand <- joinClinics(db, los_valid)
-  timeframe <- calculateTimeframe(complete_db_Pand, los_valid)
+  timeframe <- calculateTimeframe(complete_db_Pand, los)
   return(timeframe)
 }
 
@@ -166,11 +167,11 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
   timeframe <- complete_db_Pand %>%
     group_by(calendarweek_year, cw) %>%
-    summarise(weighted.mean(los, clinic))
+    summarise(weighted_los = mean(los))
   case_num <- calculateCaseNumber(complete_db_Pand)
-  timeframe <- left_join(timeframe, case_num)
+  timeframe  <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
-  timeframe$Abweichung <- timeframe$`weighted.mean(los, clinic)` - timeframe$LOS_vor_Pand
+  timeframe$Abweichung <- timeframe$weighted_los - timeframe$LOS_vor_Pand
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getFirstCalendarWeekOfCurrentMonth()
@@ -252,8 +253,6 @@ args <- commandArgs(trailingOnly=TRUE)
 # Access the path variable passed from Python
 filepath <- args[1]
 
-filepath <- 'C:\Users\whoy\PycharmProjects\LOC_Calculator\src\resources'
-
 # Path to extraction location
 exDir <- paste0(removeTrailingFileFromPath(filepath),"\\broker_result")
 
@@ -270,6 +269,5 @@ file_numbers <- getHospitalNumbers(exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
-print(timeframe)
 write.csv(timeframe, file.path(exDir, "timeframe.csv"), row.names = FALSE)
 
