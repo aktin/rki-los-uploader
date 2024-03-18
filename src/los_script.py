@@ -304,13 +304,19 @@ def main(path_toml: str, request_tag: str = "LOS") -> None:
     # delete resources folder as preparation for new results
     delete_contents_of_dir(broker_result_path)
 
+    # create instances of the broker request id manager and the broker request result manager
+    zip_file_path = download_latest_data_export_from_broker_by_tag(path_toml, request_tag)
+    r_result_path = execute_rscript(zip_file_path, r_script_path)
+
+    clean_and_upload_to_sftp_server(r_result_path)
+
+
+def download_latest_data_export_from_broker_by_tag(path_toml, request_tag):
     broker_id_manager = BrokerRequestIDManager(path_toml)
     broker_manager = BrokerRequestResultManager(path_toml)
     request_id = broker_id_manager.request_highest_id_by_tag_from_broker(request_tag)
     zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
-    r_result_path = execute_rscript(zip_file_path, r_script_path)
-
-    clean_and_upload_to_sftp_server(r_result_path)
+    return zip_file_path
 
 
 def clean_and_upload_to_sftp_server(r_result_path) -> None:
