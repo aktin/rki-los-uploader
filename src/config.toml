@@ -9,7 +9,8 @@ tag = "pandemieradar"
 temp_dir = 'C:\\Users\\whoy\\PycharmProjects\\LOC_Calculator\\src'
 
 [rscript]
-script_path = 'C:\\Users\\whoy\\PycharmProjects\\LOC_Calculator\\src\\LOSCalculator.R'
+script_path = 'C:\\Users\\whoy\\PycharmProjects\\LOC_Calculator\\src\\resources\\LOSCalculator.R'
+r_directory = 'C:\\Program Files\\R\\R-4.3.1\\bin'
 
 [SFTP]
 HOST = "127.0.0.1"
