@@ -9,6 +9,8 @@ import urllib
 import xml.etree.ElementTree as et
 import shutil
 import zipfile
+from _typeshed import SupportsDunderLT, SupportsDunderGT
+from typing import Any
 
 import pandas
 import pandas as pd
@@ -231,7 +233,7 @@ class BrokerRequestIDManager:
         return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
                 'Accept': mediatype}
 
-    def request_highest_id_by_tag_from_broker(self, tag='pandemieradar') -> int:
+    def request_highest_id_by_tag_from_broker(self, tag='pandemieradar') -> str | None:
         """
         Requests the highest ID for a given tag from AKTIN Broker. Highest ID = latest entry
         :return: id of the last result
@@ -250,7 +252,7 @@ class BrokerRequestIDManager:
         return max(list_request_id)
 
 
-def set_path_variable():
+def set_path_variable() -> None:
     """
     This Method sets the path variable in an Windows environment. This is necessary for executing the Rscript for
     Length of stay.
@@ -269,7 +271,7 @@ def set_path_variable():
     os.environ['PATH'] = new_path
 
 
-def execute_rscript(broker_result_zip_path: str, rscript_path: str):
+def execute_given_rscript(broker_result_zip_path: str, rscript_path: str) -> str:
     set_path_variable()
     # result = subprocess.call(['Rscript', rscript_path, broker_result_zip_path])
     output = subprocess.check_output(['Rscript', rscript_path, broker_result_zip_path])
@@ -278,10 +280,10 @@ def execute_rscript(broker_result_zip_path: str, rscript_path: str):
     output_string = output.decode("utf-8")
     result_path = output_string.split('\"')[-2]
 
-    return (result_path)
+    return result_path
 
 
-def delete_contents_of_dir(_dir):
+def delete_contents_of_dir(_dir) -> None:
     try:
         # Use shutil.rmtree to remove all files and subdirectories within the directory
         shutil.rmtree(_dir)
@@ -292,7 +294,7 @@ def delete_contents_of_dir(_dir):
         print(f"An error occurred: {e}")
 
 
-def main(path_toml: str, request_tag: str = "LOS"):
+def main(path_toml: str, request_tag: str = "LOS") -> None:
     # path_toml = "config.toml"
     work_directory = os.getcwd()
     # construct path to length of stay calculating r script
@@ -311,7 +313,7 @@ def main(path_toml: str, request_tag: str = "LOS"):
     clean_and_upload_to_sftp_server(r_result_path)
 
 
-def clean_and_upload_to_sftp_server(r_result_path):
+def clean_and_upload_to_sftp_server(r_result_path) -> None:
     sftp_manager = SftpFileManager()
     sftp_files = sftp_manager.list_files()
     for sftp_file in sftp_files:
