@@ -331,7 +331,9 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         raise SystemExit('path to config TOML is missing!')
     path_toml = sys.argv[1]
-    main(path_toml, "LOS")
+    conf = toml.load(path_toml)
+    request_tag = conf['requests']['tag']
+    main(path_toml, request_tag)
 
 
 
