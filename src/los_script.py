@@ -9,7 +9,7 @@ import urllib
 import xml.etree.ElementTree as et
 import shutil
 import zipfile
-from _typeshed import SupportsDunderLT, SupportsDunderGT
+# from _typeshed import SupportsDunderLT, SupportsDunderGT
 from typing import Any
 
 import pandas
@@ -233,7 +233,7 @@ class BrokerRequestIDManager:
         return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
                 'Accept': mediatype}
 
-    def request_highest_id_by_tag_from_broker(self, tag='pandemieradar') -> str | None:
+    def request_highest_id_by_tag_from_broker(self, tag='pandemieradar'):
         """
         Requests the highest ID for a given tag from AKTIN Broker. Highest ID = latest entry
         :return: id of the last result
@@ -295,10 +295,10 @@ def delete_contents_of_dir(_dir) -> None:
 
 
 def main(path_toml: str, request_tag: str = "LOS") -> None:
-    # path_toml = "config.toml"
-    work_directory = os.getcwd()
+    config = toml.load(path_toml)
+    work_directory = config['misc']['temp_dir']
     # construct path to length of stay calculating r script
-    r_script_path = os.path.join(work_directory, "LOSCalculator.R")
+    r_script_path = config['rscript']['script_path']
     # construct path to resource folder where the broker results are stored
     broker_result_path = os.path.join(work_directory, 'resources')
     # delete resources folder as preparation for new results
@@ -331,7 +331,6 @@ if __name__ == '__main__':
     if len(sys.argv) < 2:
         raise SystemExit('path to config TOML is missing!')
     path_toml = sys.argv[1]
-
     main(path_toml, "LOS")
 
 
@@ -340,8 +339,9 @@ class TestLOSCalculation(unittest.TestCase):
     """
     Tests the R script if it returns the assumed result
     """
-    def setUp(self):
-        self.work_directory = os.getcwd()
+    def setUp(self, path_toml: str = "config.toml"):
+        config = toml.load(path_toml)
+        self.work_directory = config['misc']['temp_dir']
         self.r_script_path = os.path.join(self.work_directory, "LOSCalculator.R")
         self.zip_file_path = os.path.join(self.work_directory, 'resources\\unittest_result.zip')
 

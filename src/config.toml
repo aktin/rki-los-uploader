@@ -6,7 +6,10 @@ api_key = "xxxAdmin1234"
 tag = "pandemieradar"
 
 [misc]
-working_dir = "C:/Users/whoy/PycharmProjects/LOC_Calculator/src"
+temp_dir = 'C:\\Users\\whoy\\PycharmProjects\\LOC_Calculator\\src'
+
+[rscript]
+script_path = 'C:\\Users\\whoy\\PycharmProjects\\LOC_Calculator\\src\\LOSCalculator.R'
 
 [SFTP]
 HOST = "127.0.0.1"
