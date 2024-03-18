@@ -269,5 +269,7 @@ file_numbers <- getHospitalNumbers(exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
-write.csv(timeframe, file.path(exDir, "timeframe.csv"), row.names = FALSE)
+timeframe_path <- paste0(exDir, "\\\\timeframe.csv")
+write.csv(timeframe, timeframe_path, row.names = FALSE)
+print(timeframe_path)
 

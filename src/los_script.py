@@ -271,8 +271,14 @@ def set_path_variable():
 
 def execute_rscript(broker_result_zip_path: str, rscript_path: str):
     set_path_variable()
-    result = subprocess.call(['Rscript', rscript_path, broker_result_zip_path])
-    return (result)
+    # result = subprocess.call(['Rscript', rscript_path, broker_result_zip_path])
+    output = subprocess.check_output(['Rscript', rscript_path, broker_result_zip_path])
+
+    # Decode the output to string if necessary
+    output_string = output.decode("utf-8")
+    result_path = output_string.split('\"')[-2]
+
+    return (result_path)
 
 
 def delete_contents_of_dir(_dir):
@@ -286,32 +292,40 @@ def delete_contents_of_dir(_dir):
         print(f"An error occurred: {e}")
 
 
-# if __name__ == '__main__':
-# # if len(sys.argv) < 2:
-# #     raise SystemExit('path to config TOML is missing!')
-# # path_toml = sys.argv[1]
-#     path_toml = "config.toml"
-#     work_directory = os.getcwd()
-#     # construct path to length of stay calculating r script
-#     r_script_path = os.path.join(work_directory, "LOSCalculator.R")
-#     # construct path to resource folder
-#     broker_result_path = os.path.join(work_directory, 'resources')
-#     # delete resources folder
-#     delete_contents_of_dir(broker_result_path)
-#
-#     broker_id_manager = BrokerRequestIDManager(path_toml)
-#     broker_manager = BrokerRequestResultManager(path_toml)
-#
-#     request_id = broker_id_manager.request_highest_id_by_tag_from_broker("BMG")
-#     zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
-#
-#     r_result = execute_rscript(zip_file_path, r_script_path)
-#
-#     sftp_manager = SftpFileManager()
-#     sftp_files = sftp_manager.list_files()
-#     for sftp_file in sftp_files:
-#         sftp_manager.delete_file(sftp_file)
-#     sftp_manager.upload_file(os.path.join(broker_result_path, "broker_result\\timeframe.csv"))  # TODO return timeframe file from r script
+def main(path_toml: str, request_tag: str = "LOS"):
+    # path_toml = "config.toml"
+    work_directory = os.getcwd()
+    # construct path to length of stay calculating r script
+    r_script_path = os.path.join(work_directory, "LOSCalculator.R")
+    # construct path to resource folder where the broker results are stored
+    broker_result_path = os.path.join(work_directory, 'resources')
+    # delete resources folder as preparation for new results
+    delete_contents_of_dir(broker_result_path)
+
+    broker_id_manager = BrokerRequestIDManager(path_toml)
+    broker_manager = BrokerRequestResultManager(path_toml)
+    request_id = broker_id_manager.request_highest_id_by_tag_from_broker(request_tag)
+    zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
+    r_result_path = execute_rscript(zip_file_path, r_script_path)
+
+    clean_and_upload_to_sftp_server(r_result_path)
+
+
+def clean_and_upload_to_sftp_server(r_result_path):
+    sftp_manager = SftpFileManager()
+    sftp_files = sftp_manager.list_files()
+    for sftp_file in sftp_files:
+        sftp_manager.delete_file(sftp_file)
+    sftp_manager.upload_file(r_result_path)
+
+
+if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        raise SystemExit('path to config TOML is missing!')
+    path_toml = sys.argv[1]
+
+    main(path_toml, "LOS")
+
 
 
 class TestLOSCalculation(unittest.TestCase):
@@ -407,6 +421,3 @@ class TestLOSCalculation(unittest.TestCase):
         # delete the directory "unittest_result"
         shutil.rmtree("resources\\unittest_result")
 
-
-if __name__ == '__main__':
-    unittest.main()
