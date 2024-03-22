@@ -1,11 +1,38 @@
-# from libraries.sftp_export import *
+# -*- coding: utf-8 -*-
+"""
+Created on 22.03.2024
+@AUTHOR: Wiliam Hoy (whoy@ukaachen.de)
+@VERSION=1.0
+"""
+
+#
+#      Copyright (c) 2024 Wiliam Hoy
+#
+#      This program is free software: you can redistribute it and/or modify
+#      it under the terms of the GNU Affero General Public License as
+#      published by the Free Software Foundation, either version 3 of the
+#      License, or (at your option) any later version.
+#
+#      This program is distributed in the hope that it will be useful,
+#      but WITHOUT ANY WARRANTY; without even the implied warranty of
+#      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#      GNU Affero General Public License for more details.
+#
+#      You should have received a copy of the GNU Affero General Public License
+#      along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+#
+
 import logging
 import os
+import re
 import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
 import shutil
+from re import Match
+
 import paramiko
 import requests
 import toml
@@ -41,7 +68,7 @@ class Manager:
         """
         required_keys = {'BROKER.URL', 'BROKER.API_KEY', 'REQUESTS.TAG', 'SFTP.HOST', 'SFTP.USERNAME',
                          'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR', 'MISC.TEMP_DIR',
-                         'RSCRIPT.SCRIPT_PATH'}
+                         'MISC.TEMP_ZIP_DIR', 'RSCRIPT.SCRIPT_PATH'}
         if not os.path.isfile(path_toml):
             raise SystemExit('invalid TOML file path')
         with open(path_toml, encoding='utf-8') as file:
@@ -110,7 +137,7 @@ class BrokerRequestResultManager:
         self.__broker_url = os.environ['BROKER.URL']
         self.__admin_api_key = os.environ['BROKER.API_KEY']
         self.__tag_requests = os.environ['REQUESTS.TAG']
-        self.__working_dir = os.environ['WORKING_DIR']
+        self.__working_dir = os.environ['MISC.WORKING_DIR']
         self.__check_broker_server_availability()
 
     def __check_broker_server_availability(self):
@@ -166,12 +193,12 @@ class BrokerRequestResultManager:
         url = self.__append_to_broker_url('broker', 'download', id_export)
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
-        zip_file_path = os.path.join(self.__working_dir, "resources", f'{id_request}_result.zip')
+        zip_file_path = os.path.join(os.environ['MISC.TEMP_ZIP_DIR'], f'{id_request}_result.zip')
         with open(zip_file_path, 'wb') as zip_file:
             zip_file.write(response.content)
         return zip_file_path
 
-    def request_highest_id_by_tag_from_broker(self, tag='pandemieradar'):
+    def request_highest_id_by_tag_from_broker(self, tag):
         """
         Requests the highest ID for a given tag from AKTIN Broker. Highest ID = latest entry
         :return: id of the last result
@@ -182,8 +209,6 @@ class BrokerRequestResultManager:
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
 
-        # TODO merge the two iterations to one
-        # TODO return type should be int
         list_request_id = [element.get('id') for element in et.fromstring(response.content)]
         if len(list_request_id) < 1:
             raise Exception(f"no element with tag:\"{tag}\" was found!")
@@ -201,66 +226,70 @@ class BrokerRequestResultManager:
         return list_request_id
 
 
-def execute_given_rscript(broker_result_zip_path: str, rscript_path: str, path_toml: str) -> str:
-    output = subprocess.check_output(['Rscript', rscript_path, broker_result_zip_path])
+class LosScriptManager:
+    """
+    This class manages helper methods for managing the execution and flow of the Rscript. It starts the main method
+    flow, executes the rscript and clears a directory in wich temporary files are stored.
+    """
 
-    # Decode the output to string if necessary
-    output_string = output.decode("utf-8")
-    result_path = output_string.split('\"')[-2]
+    def main(self, path_toml: str) -> None:
+        manager = Manager(path_toml)
+        r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
+        request_tag = os.environ['REQUESTS.TAG']
 
-    return result_path
+        # construct path to resource folder where the broker results are stored
+        broker_result_path = os.environ['MISC.TEMP_ZIP_DIR']
+        # create instances of the broker request id manager and the broker request result manager
 
+        zip_file_path = self.download_latest_data_export_from_broker_by_tag(request_tag, manager)
+        r_result_path = self.execute_given_rscript(zip_file_path, r_script_path)
 
-def delete_contents_of_dir(_dir) -> None:
-    try:
-        # Use shutil.rmtree to remove all files and subdirectories within the directory
-        shutil.rmtree(_dir)
-        # Recreate the directory if needed
-        os.mkdir(_dir)
-        print(f"Contents of '{_dir}' have been deleted.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        manager.__sftp.clean_and_upload_to_sftp_server(r_result_path, manager)
+        # delete resources folder as preparation for new results
+        self.delete_contents_of_dir(broker_result_path)
 
+    def execute_given_rscript(self, broker_result_zip_path: str, rscript_path: str) -> Match[str] | None:
+        os.chmod(rscript_path, 0o755)
 
-def main(path_toml: str) -> None:
-    Manager(path_toml)
-    work_directory = os.environ['MISC.TEMP_DIR']
-    r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
-    request_tag = os.environ['REQUESTS.TAG']
+        output = subprocess.check_output(['Rscript', rscript_path, broker_result_zip_path])
+        logging.info("R Script finished successfully")
+        # Decode the output to string if necessary
+        output_string = output.decode("utf-8")
+        # search output for regex "timeframe_path:"
+        result_path = re.search('timeframe_path:.*\"', output_string)
 
-    # construct path to resource folder where the broker results are stored
-    broker_result_path = os.path.join(work_directory, 'resources')
-    # delete resources folder as preparation for new results
-    delete_contents_of_dir(broker_result_path)
+        return result_path
 
-    # create instances of the broker request id manager and the broker request result manager
-    zip_file_path = download_latest_data_export_from_broker_by_tag(request_tag)
-    r_result_path = execute_given_rscript(zip_file_path, r_script_path, path_toml)
+    def delete_contents_of_dir(self, path) -> None:
+        try:
+            # Use shutil.rmtree to remove all files and subdirectories within the directory
+            shutil.rmtree(path)
+            # Recreate the directory if needed
+            os.mkdir(path)
+            print(f"Contents of '{path}' have been deleted.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
-    clean_and_upload_to_sftp_server(r_result_path)
+    def download_latest_data_export_from_broker_by_tag(self, request_tag, manager: Manager):
+        """This method manages the download of the latest broker data export, by using the existing methods from
+        BrokerRequestResultManager and managing them"""
+        broker_manager = manager.__broker
+        request_id = broker_manager.request_highest_id_by_tag_from_broker(request_tag)
+        zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
+        return zip_file_path
 
-
-def download_latest_data_export_from_broker_by_tag(request_tag):
-    broker_manager = BrokerRequestResultManager()
-    request_id = broker_manager.request_highest_id_by_tag_from_broker(request_tag)
-    zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
-    return zip_file_path
-
-
-def clean_and_upload_to_sftp_server(r_result_path) -> None:
-    sftp_manager = SftpFileManager()
-    sftp_files = sftp_manager.list_files()
-    for sftp_file in sftp_files:
-        sftp_manager.delete_file(sftp_file)
-    sftp_manager.upload_file(r_result_path)
+    def clean_and_upload_to_sftp_server(self, r_result_path, manager: Manager) -> None:
+        sftp_manager = manager.__sftp
+        sftp_files = sftp_manager.list_files()
+        for sftp_file in sftp_files:
+            sftp_manager.delete_file(sftp_file)
+        sftp_manager.upload_file(r_result_path)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        raise SystemExit('path to config TOML is missing!')
+    # if len(sys.argv) < 2:
+    #     raise SystemExit('path to config TOML is missing!')
 
-    main(sys.argv[1])   # the given parameter should contain the path to the config.toml file
-
-
-
-
+    toml_path = sys.argv[1]
+    losmanager = LosScriptManager()
+    losmanager.main(toml_path)

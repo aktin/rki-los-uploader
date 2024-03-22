@@ -1,4 +1,6 @@
 # Preparation
+
+## Install R and R packages "conflicted"," dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r"
 Set R path in PATH VARIABLES of the system, Here is a example for a python 
 method that does that for you: 
 
@@ -22,4 +24,8 @@ def set_path_variable(path_toml: str) -> None:
     # Update the PATH environment variable
     os.environ['PATH'] = new_path
 ```
+Linux(Terminal): export PATH=$PATH:/usr/lib/R
+
+
+
 
