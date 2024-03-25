@@ -82,6 +82,9 @@ class Manager:
             missing_keys = required_keys - loaded_keys
             raise SystemExit(f'following keys are missing in config file: {missing_keys}')
 
+    def get_broker(self):
+        return self.__broker
+
 
 class SftpFileManager:
     """
@@ -94,7 +97,7 @@ class SftpFileManager:
         self.__sftp_password = os.environ['SFTP.PASSWORD']
         self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
         self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
-        self.__connection = self.__connect_to_sftp()
+        # self.__connection = self.__connect_to_sftp()
 
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
@@ -256,8 +259,7 @@ class LosScriptManager:
         # Decode the output to string if necessary
         output_string = output.decode("utf-8")
         # search output for regex "timeframe_path:"
-        result_path = re.search('timeframe_path:.*\"', output_string)
-
+        result_path = re.search('timeframe_path:.*\"', output_string)[0].split(':')[1]
         return result_path
 
     def delete_contents_of_dir(self, path) -> None:
@@ -273,7 +275,7 @@ class LosScriptManager:
     def download_latest_data_export_from_broker_by_tag(self, request_tag, manager: Manager):
         """This method manages the download of the latest broker data export, by using the existing methods from
         BrokerRequestResultManager and managing them"""
-        broker_manager = manager.__broker
+        broker_manager = manager.get_broker()
         request_id = broker_manager.request_highest_id_by_tag_from_broker(request_tag)
         zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
         return zip_file_path

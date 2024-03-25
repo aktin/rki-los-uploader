@@ -1,18 +1,16 @@
 #### BMG Pandemieradar NEU ####
-library(conflicted)
-library(dplyr)
-library(readr)
-library(tidyverse)
-library(lubridate)
-options(repos = c(CRAN = "https://cran.rstudio.com/"))
-install.packages("mosaic")
-library(mosaic)
+required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
+for (package_name in required_packages) {
+  if (!require(package_name, quietly = TRUE)) {
+    install.packages(package_name)  # Install the package if it's not installed
+  }
+  library(package_name, character.only = TRUE)
+}
+
+#options(repos = c(CRAN = "https://cran.rstudio.com/"))
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
 
-install.packages("ISOweek")
-library(ISOweek)
-library(r2r)
 
 unpackZip <- function(inDir, exDir) {
   tryCatch({
@@ -50,11 +48,11 @@ unpackClinicResult <- function(exDir, file_numbers) {
 #' @param filepath the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
 #' @param file_numbers hospital numbers in directory name to identify corresponding hospital
 processFiles <- function(filepath, file_numbers) {
-  filepath <- exDir
+  #filepath <- exDir
   # TODO aufnahme_ts, dann triage_ts. 2. beim laden der datei prüfen ob alle wichtigen spalten da sind (aufnahme, triage, entlassung)
   all_data_df <- data.frame()
   for (i in file_numbers) {
-    filepath_i <- file.path(filepath, sprintf("%d_result\\case_data.txt", i), fsep = "\\")
+    filepath_i <- file.path(filepath, sprintf("%d_result/case_data.txt", i), fsep = "/")
     print(paste("This is used in processFiles: ", filepath_i))
     if (file.exists(filepath_i)) {
       df <- read_delim(
@@ -62,22 +60,21 @@ processFiles <- function(filepath, file_numbers) {
         delim = "\t", escape_double = FALSE,
         trim_ws = TRUE
       ) %>% mutate(clinic = i)
-      print(df)
-      print(colnames(df))
-      if ("entlassung_ts" %in% colnames(df)) {
-        print("entlassung success!!!!!!!!!")
-        if ("aufnahme_ts" %in% colnames(df)) {
-          if(nrow(df[is.na(df$aufnahme_ts),])==0) {
+      if ("entlassung_ts" %in% colnames(df)) { # check for required column 'entlassung_ts'
+        print(paste("entlassung_ts located in case data for hospital", i))
+        if ("aufnahme_ts" %in% colnames(df)) {  
+          print(paste("aufnahme_ts located in case data for hospital", i))
+          if(nrow(df[is.na(df$aufnahme_ts),])==0) { #check if aufnahme_ts has no missing values
             all_data_df <- rbind(all_data_df, df) 
           } else if("triage_ts" %in% colnames(df)) {
             df <- df[!is.na(df$aufnahme_ts) & !is.na(df$triage_ts), ]  #remove rows without "aufnahme_ts" and "triage_ts"
             df$aufnahme_ts[is.na(df$aufnahme_ts)] <- df$triage_ts[is.na(df$aufnahme_ts)]  # Copy "triage_ts" value to "aufnahme_ts" where "aufnahme_ts" is empty
             all_data_df <- rbind(all_data_df, df) 
           } else {
-            print(paste('No triage column found, but needed because aufnahme_ts has empty values: ',filepath_i))
+            print(paste('aufnahme_ts has empty values and triage column is not suitable to replace missing entries: ',filepath_i))
           }
+        }
         
-        } 
       } else {
         print(paste('No entlassung_ts found in: ', filepath_i))
         NULL
@@ -218,8 +215,7 @@ saveData <- function(filepath, timeframe) {
   )
 }
 
-removeTrailingFileFromPath <- function(filepath) {
-  regex <- "\\\\"
+removeTrailingFileFromPath <- function(filepath, regex) {
   index <- max(gregexpr(regex, filepath)[[1]])
   if (index > 1) {
     exDir <- substr(filepath, 1, index - 1)
@@ -252,9 +248,10 @@ getHospitalNumbers <- function(path) {
 args <- commandArgs(trailingOnly=TRUE)
 # Access the path variable passed from Python
 filepath <- args[1]
+filepath <- '/home/wiliam/PycharmProjects/LOC_Calculator/src/resources/temp/1270_result.zip'
 
-# Path to extraction location
-exDir <- paste0(removeTrailingFileFromPath(filepath),"\\broker_result")
+# Path to extraction location, regex on win: '\\\\' and linux '/'
+exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 
 if(!dir.exists(exDir)) {
   dir.create(exDir)
@@ -269,7 +266,7 @@ file_numbers <- getHospitalNumbers(exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
 timeframe <- performAnalysis(case_data)
-timeframe_path <- paste0(exDir, "\\\\timeframe.csv")
+timeframe_path <- paste0(exDir, "/timeframe.csv")
 write.csv(timeframe, timeframe_path, row.names = FALSE)
-print(timeframe_path)
+print(paste0("timeframe_path:",timeframe_path))
 
