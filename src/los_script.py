@@ -32,12 +32,113 @@ import urllib
 import xml.etree.ElementTree as et
 import shutil
 from re import Match
-
 import paramiko
 import requests
 import toml
 
-from libraries.sftp_export import StatusXmlManager
+
+class StatusXmlManager:
+    """
+    A class for managing operations on an XML status file.
+    """
+
+    def __init__(self):
+        self.path_status_xml = os.path.join(os.environ['MISC.WORKING_DIR'], 'status.xml')
+        if not os.path.isfile(self.path_status_xml):
+            self.__init_status_xml()
+        self.__format_date = '%Y-%m-%d %H:%M:%S'
+        self.__element_tree = et.parse(self.path_status_xml)
+
+    def __init_status_xml(self):
+        """
+        Creates a new 'status.xml' file in the working directory with an empty <status> tag.
+        """
+        root = et.Element('status')
+        self.__element_tree = et.ElementTree(root)
+        self.__save_current_status_xml_as_file()
+
+    def __save_current_status_xml_as_file(self):
+        self.__element_tree.write(self.path_status_xml, encoding='utf-8')
+
+    def get_element_by_id(self, id_request: str) -> et.Element:
+        root = self.__element_tree.getroot()
+        for request_status in root.iter('request-status'):
+            id_element = request_status.find('id')
+            if id_element is not None and id_element.text == id_request:
+                return request_status
+        return None
+
+    def update_or_add_element(self, id_request: str, completion: str):
+        root = self.__element_tree.getroot()
+        for request_status in root.findall('request-status'):
+            id_element = request_status.find('id')
+            if id_element is not None and id_element.text == id_request:
+                request_status.find('completion').text = completion
+                self.__add_or_update_date_tag_in_element(request_status, 'last-update')
+                break
+        else:
+            new_request_status = et.SubElement(root, 'request-status')
+            et.SubElement(new_request_status, 'id').text = id_request
+            et.SubElement(new_request_status, 'completion').text = completion
+            et.SubElement(new_request_status, 'uploaded').text = datetime.utcnow().strftime(self.__format_date)
+        self.__save_current_status_xml_as_file()
+
+    def __add_or_update_date_tag_in_element(self, parent: et.Element, name_tag: str) -> None:
+        child = parent.find(name_tag)
+        if child is None:
+            et.SubElement(parent, name_tag).text = datetime.utcnow().strftime(self.__format_date)
+        else:
+            child.text = datetime.utcnow().strftime(self.__format_date)
+
+    def add_delete_tag_to_element(self, id_request: str):
+        parent = self.get_element_by_id(id_request)
+        self.__add_or_update_date_tag_in_element(parent, 'deleted')
+        self.__save_current_status_xml_as_file()
+
+    def get_request_completion_as_dict(self) -> dict:
+        """
+        Extract the request ID and completion from each element in the status XML.
+        Returns them as a dictionary.
+        """
+        root = self.__element_tree.getroot()
+        list_ids = [element.text for element in root.findall('.//id')]
+        list_completion = [element.text for element in root.findall('.//completion')]
+        return dict(zip(list_ids, list_completion))
+
+    def compare_request_completion_between_broker_and_sftp(self, dict_broker: dict, dict_xml: dict) -> (set, set, set):
+        set_new = set(dict_broker.keys()).difference(set(dict_xml.keys()))
+        set_update = self.__get_requests_to_update(dict_broker, dict_xml)
+        set_delete = self.__get_requests_to_delete(dict_broker, dict_xml)
+        logging.info(
+            f"{len(set_new)} new requests, {len(set_update)} requests to update, {len(set_delete)} requests to delete")
+        return set_new, set_update, set_delete
+
+    def __get_requests_to_update(self, dict_broker: dict, dict_xml: dict) -> set:
+        """
+        A request has to be updated on sftp server if its completion rate changed
+        """
+        set_update = set(dict_broker.keys()).intersection(set(dict_xml.keys()))
+        for key in set_update.copy():
+            if dict_broker.get(key) == dict_xml.get(key):
+                set_update.remove(key)
+            if self.__is_request_tagged_as_deleted(key):
+                set_update.remove(key)
+        return set_update
+
+    def __get_requests_to_delete(self, dict_broker: dict, dict_xml: dict) -> set:
+        """
+        A request with the tag "deleted" is already deleted on sftp server
+        """
+        set_delete = set(dict_xml.keys()).difference(set(dict_broker.keys()))
+        for key in set_delete.copy():
+            if self.__is_request_tagged_as_deleted(key):
+                set_delete.remove(key)
+        return set_delete
+
+    def __is_request_tagged_as_deleted(self, id_request: str) -> bool:
+        parent = self.get_element_by_id(id_request)
+        child = parent.find('deleted')
+        return child is not None
 
 
 class Manager:
@@ -97,7 +198,7 @@ class SftpFileManager:
         self.__sftp_password = os.environ['SFTP.PASSWORD']
         self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
         self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
-        # self.__connection = self.__connect_to_sftp()
+        self.__connection = self.__connect_to_sftp()
 
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
@@ -268,9 +369,9 @@ class LosScriptManager:
             shutil.rmtree(path)
             # Recreate the directory if needed
             os.mkdir(path)
-            print(f"Contents of '{path}' have been deleted.")
+            logging.info(f"Contents of '{path}' have been deleted.")
         except Exception as e:
-            print(f"An error occurred: {e}")
+            logging.error(e)
 
     def download_latest_data_export_from_broker_by_tag(self, request_tag, manager: Manager):
         """This method manages the download of the latest broker data export, by using the existing methods from
@@ -289,8 +390,8 @@ class LosScriptManager:
 
 
 if __name__ == '__main__':
-    # if len(sys.argv) < 2:
-    #     raise SystemExit('path to config TOML is missing!')
+    if len(sys.argv) < 2:
+        raise SystemExit('path to config TOML is missing!')
 
     toml_path = sys.argv[1]
     losmanager = LosScriptManager()

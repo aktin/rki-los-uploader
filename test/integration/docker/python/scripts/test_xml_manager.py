@@ -3,7 +3,7 @@ import time
 import unittest
 import xml.etree.ElementTree as et
 
-from sftp_export import StatusXmlManager
+from los_script import StatusXmlManager
 
 
 class TestStatusXmlManager(unittest.TestCase):

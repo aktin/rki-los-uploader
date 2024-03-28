@@ -2,12 +2,11 @@
 required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
 for (package_name in required_packages) {
   if (!require(package_name, quietly = TRUE)) {
-    install.packages(package_name)  # Install the package if it's not installed
+    #install.packages(package_name, INSTALL_opts = '--no-lock')  # Install the package if it's not installed
   }
   library(package_name, character.only = TRUE)
 }
 
-#options(repos = c(CRAN = "https://cran.rstudio.com/"))
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
 
@@ -45,47 +44,46 @@ unpackClinicResult <- function(exDir, file_numbers) {
 #' This function uses the unpacked zip archives from the broker results that 
 #' contain result sets for each hospital. It adds the hospital number as a new column.
 #' At the end a dataframe with all hospital results is created, identified by the hospital number
-#' @param filepath the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
+#' @param exDir the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
 #' @param file_numbers hospital numbers in directory name to identify corresponding hospital
-processFiles <- function(filepath, file_numbers) {
-  #filepath <- exDir
-  # TODO aufnahme_ts, dann triage_ts. 2. beim laden der datei prüfen ob alle wichtigen spalten da sind (aufnahme, triage, entlassung)
+processFiles <- function(exDir, file_numbers) {
   all_data_df <- data.frame()
   for (i in file_numbers) {
-    filepath_i <- file.path(filepath, sprintf("%d_result/case_data.txt", i), fsep = "/")
+    filepath_i <- file.path(exDir, sprintf("%d_result/case_data.txt", i), fsep = "/")
     print(paste("This is used in processFiles: ", filepath_i))
+    
     if (file.exists(filepath_i)) {
       df <- read_delim(
         filepath_i,
         delim = "\t", escape_double = FALSE,
         trim_ws = TRUE
       ) %>% mutate(clinic = i)
-      if ("entlassung_ts" %in% colnames(df)) { # check for required column 'entlassung_ts'
-        print(paste("entlassung_ts located in case data for hospital", i))
-        if ("aufnahme_ts" %in% colnames(df)) {  
-          print(paste("aufnahme_ts located in case data for hospital", i))
-          if(nrow(df[is.na(df$aufnahme_ts),])==0) { #check if aufnahme_ts has no missing values
-            all_data_df <- rbind(all_data_df, df) 
-          } else if("triage_ts" %in% colnames(df)) {
-            df <- df[!is.na(df$aufnahme_ts) & !is.na(df$triage_ts), ]  #remove rows without "aufnahme_ts" and "triage_ts"
-            df$aufnahme_ts[is.na(df$aufnahme_ts)] <- df$triage_ts[is.na(df$aufnahme_ts)]  # Copy "triage_ts" value to "aufnahme_ts" where "aufnahme_ts" is empty
-            all_data_df <- rbind(all_data_df, df) 
-          } else {
-            print(paste('aufnahme_ts has empty values and triage column is not suitable to replace missing entries: ',filepath_i))
-          }
-        }
-        
-      } else {
-        print(paste('No entlassung_ts found in: ', filepath_i))
-        NULL
+     
+      if(!"entlassung_ts" %in% colnames(df)) {
+        next
+      } 
+      
+      if(!"aufnahme_ts" %in% colnames(df)) {
+        df$aufnahme_ts <- NA
       }
       
+      df <- df[complete.cases(df$entlassung_ts), ]  # remove rows with empty entlassung_ts
+      df <- df %>% mutate(aufnahme_ts = coalesce(aufnahme_ts, triage_ts)) # empty aufnahme_ts are filled with corresponding triage_ts
+      df <- df[complete.cases(df$aufnahme_ts), ]  # remove rows where aufnahme_ts is still empty
+      all_data_df <- rbind(all_data_df, df)
+      
     } else {
+      print(paste("No file found: ", filepath_i))
       NULL
     }
   }
   
-  return(all_data_df)
+  if(nrow(all_data_df) > 0) {
+    return(all_data_df)  
+  } else {
+    return(NULL)
+  }
+  
 }
 
 # performs various methods on the extracted data
@@ -102,20 +100,13 @@ performAnalysis <- function(case_data) {
 
 # fills the case_data dataframe with info
 fillCaseData <- function(case_data) {
-  case_data$admission_ts <- with_tz(case_data$aufnahme_ts)
+  case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts)
+  case_data$entlassung_ts <- with_tz(case_data$entlassung_ts)
   case_data$triage_ts <- with_tz(case_data$triage_ts)
-  case_data$discharge_ts <- with_tz(case_data$entlassung_ts)
-  case_data$jahr <- year(case_data$admission_ts)
-  case_data$cw <- format(case_data$admission_ts, "%V")
-  case_data$calendarweek_year <- format(case_data$admission_ts, "%G")
-  case_data$earliest_ts <- as.integer(case_data$admission_ts > case_data$triage_ts)
-  case_data$Vergleich <- ifelse(is.na(case_data$triage_ts), 0, as.integer(case_data$admission_ts > case_data$triage_ts))
-  case_data$earliest_ts <- ifelse(
-    is.na(case_data$triage_ts),
-    format(case_data$admission_ts, "%Y-%m-%d %H:%M:%S"),
-    format(pmax(case_data$admission_ts, case_data$triage_ts), "%Y-%m-%d %H:%M:%S")
-  )
-  case_data$los <- difftime(case_data$discharge_ts, case_data$earliest_ts, units = "mins")
+  case_data$jahr <- year(case_data$aufnahme_ts)
+  case_data$cw <- format(case_data$aufnahme_ts, "%V")
+  case_data$calendarweek_year <- format(case_data$aufnahme_ts, "%G")
+  case_data$los <- difftime(case_data$entlassung_ts, case_data$aufnahme_ts, units = "mins")
   return(case_data)
 }
 
@@ -135,10 +126,9 @@ filterCases <- function(case_data) {
   return(db)
 }
 
-
 filterLos <- function(db) {
   result <- data.frame(favstats(db$los ~ db$clinic))
-  names(result)[1] <- "clinic"  # Ändert den Namen der zweiten Spalte in "clinic"
+  names(result)[1] <- "clinic"  
   return(result)
 }
 
@@ -182,7 +172,6 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   return(timeframe)
 }
 
-# returns the first calendarweek from the current month
 getFirstCalendarWeekOfCurrentMonth <- function() {
   current_date <- Sys.Date()
   first_day_in_month <- floor_date(current_date, "month")
@@ -226,7 +215,6 @@ removeTrailingFileFromPath <- function(filepath, regex) {
   }
 }
 
-
 tablenameToEng <- function(var) {
   m <- hashmap()
   m[c("admission_ts", "discharge_ts", 3)] <- c("aufnahme_ts", "entlassung_ts", "c")
@@ -244,11 +232,10 @@ getHospitalNumbers <- function(path) {
 } 
 
 
-# args contains the path variable to the resource directory given by the python script executing this script
 args <- commandArgs(trailingOnly=TRUE)
 # Access the path variable passed from Python
 filepath <- args[1]
-filepath <- '/home/wiliam/PycharmProjects/LOC_Calculator/src/resources/temp/1270_result.zip'
+filepath <- '/home/wiliam/PycharmProjects/LOC_Calculator/test/resources/unittest_result.zip'
 
 # Path to extraction location, regex on win: '\\\\' and linux '/'
 exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
@@ -265,8 +252,14 @@ unpackZip(filepath, exDir)
 file_numbers <- getHospitalNumbers(exDir)
 unpackClinicResult(exDir, file_numbers)
 case_data <- processFiles(exDir, file_numbers)
-timeframe <- performAnalysis(case_data)
+if(!is.null(case_data)) {
+  timeframe <- performAnalysis(case_data)
+} else {
+  timeframe <- data.frame("no_data" = {"no_data"})
+  print("case_data is NULL, check the given table for missing columns.")
+}
 timeframe_path <- paste0(exDir, "/timeframe.csv")
 write.csv(timeframe, timeframe_path, row.names = FALSE)
-print(paste0("timeframe_path:",timeframe_path))
+print(paste0("timeframe_path:",timeframe_path))  
+
 

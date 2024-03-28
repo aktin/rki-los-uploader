@@ -3,7 +3,7 @@ import unittest
 import zipfile
 
 import toml
-from sftp_export import SftpFileManager
+from src.los_script import SftpFileManager
 
 
 class TestFernetDecryption(unittest.TestCase):

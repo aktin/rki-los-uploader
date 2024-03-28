@@ -21,7 +21,7 @@ docker cp $PROJECT_DIR/requirements.txt python:/opt/
 docker exec python pip install --no-cache-dir -r requirements.txt
 
 echo -e "${YEL} Copy python scripts from repository to python container and run unittest ${WHI}"
-docker cp $PROJECT_DIR/src/sftp_export.py python:/opt/
+docker cp $PROJECT_DIR/src/los_script.py python:/opt/
 docker exec python pytest test_xml_manager.py
 
 echo -e "${YEL} Broker creates 3 requests with tag default and 3 with tag rki ${WHI}"
@@ -47,8 +47,8 @@ for i in {0..5}; do
   docker exec broker-connection ./client_submit_results.sh $API_KEY_1 $i
 done
 
-echo -e "${YEL} Execute the sftp python script ${WHI}"
-docker exec python python sftp_export.py /opt/settings.toml
+echo -e "${YEL} Execute the los_script python script ${WHI}"
+docker exec python python los_script.py /opt/settings.toml
 
 echo -e "${YEL} Container python must have 3 entries in his status.xml ${WHI}"
 NUMBER_ENTRIES=$(docker exec python ./count_tag_in_status_xml.sh request-status)
@@ -92,8 +92,8 @@ if [[ ! $NUMBER_NODES == "2" ]]; then
   echo -e "${RED} invalid number of nodes found ($NUMBER_NODES)${WHI}"
 fi
 
-echo -e "${YEL} Execute the sftp python script again ${WHI}"
-docker exec python python sftp_export.py /opt/settings.toml
+echo -e "${YEL} Execute the los_script again ${WHI}"
+docker exec python python los_script.py /opt/settings.toml
 
 echo -e "${YEL} Container python must have 4 entries in his status.xml ${WHI}"
 NUMBER_ENTRIES=$(docker exec python ./count_tag_in_status_xml.sh request-status)
