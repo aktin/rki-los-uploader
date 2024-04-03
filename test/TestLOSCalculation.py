@@ -14,7 +14,7 @@ class TestLOSCalculation(unittest.TestCase):
     """
 
     def setUp(self):
-        config = toml.load('/home/wiliam/Aktin/LOS_broker_calculator/config.toml')
+        config = toml.load('')
         self.work_directory = config['MISC']['TEMP_DIR']
         self.r_script_path = config['RSCRIPT']['SCRIPT_PATH']
         self.zip_file_path = config['MISC']['TEST_RES_PATH']

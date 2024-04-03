@@ -1,16 +1,16 @@
 #### BMG Pandemieradar NEU ####
 required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
 for (package_name in required_packages) {
-  if (!require(package_name, quietly = TRUE)) {
-    #install.packages(package_name, INSTALL_opts = '--no-lock')  # Install the package if it's not installed
-  }
   library(package_name, character.only = TRUE)
 }
 
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
 
-
+#' Unpacks a zip file from the specified input directory to the specified extraction directory.
+#' @param inDir: Character string specifying the path to the input zip file.
+#' @param exDir: Character string specifying the path to the directory where the zip file will be extracted.
+#' @return If successful, returns the path to the extraction directory. If an error occurs, returns NULL.
 unpackZip <- function(inDir, exDir) {
   tryCatch({
     unzip(inDir, exdir = exDir)
@@ -86,7 +86,9 @@ processFiles <- function(exDir, file_numbers) {
   
 }
 
-# performs various methods on the extracted data
+#' This method calculates length of stay, analyses them and calculates a summary
+#' @param case_data: A data frame containing case data.
+#' @return A data frame representing the results of the analysis.
 performAnalysis <- function(case_data) {
   filledCaseData <- fillCaseData(case_data)
   num_of_cases <- countClinics(filledCaseData)
@@ -117,6 +119,8 @@ countClinics <- function(case_data) {
   return(num_of_cases)
 }
 
+#' This method uses the given case_data table and filters after los entries
+#' @param case_data: a table of case data with length of stay already calculated
 filterCases <- function(case_data) {
   db <- case_data %>%
     dplyr::filter(is.na(los) == FALSE) %>%
@@ -126,6 +130,9 @@ filterCases <- function(case_data) {
   return(db)
 }
 
+#' Filters the length of stay data by clinic.
+#' @param db: A data frame containing case data.
+#' @return A data frame representing the summary statistics of length of stay (LOS) data grouped by clinic.
 filterLos <- function(db) {
   result <- data.frame(favstats(db$los ~ db$clinic))
   names(result)[1] <- "clinic"  
@@ -232,34 +239,36 @@ getHospitalNumbers <- function(path) {
 } 
 
 
-args <- commandArgs(trailingOnly=TRUE)
-# Access the path variable passed from Python
-filepath <- args[1]
-filepath <- '/home/wiliam/PycharmProjects/LOC_Calculator/test/resources/unittest_result.zip'
+main <- function(){
+    args <- commandArgs(trailingOnly=TRUE)
+    # Access the path variable passed from Python
+    filepath <- args[1]
 
-# Path to extraction location, regex on win: '\\\\' and linux '/'
-exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
+    # Path to extraction location, regex on win: '\\\\' and linux '/'
+    exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 
-if(!dir.exists(exDir)) {
-  dir.create(exDir)
-  print(paste("Directory", exDir, "created."))
-} else {
-  print(paste("Directory", exDir, "already exists."))
+    if(!dir.exists(exDir)) {
+      dir.create(exDir)
+      print(paste("Directory", exDir, "created."))
+    } else {
+      print(paste("Directory", exDir, "already exists."))
+    }
+
+    unpackZip(filepath, exDir)
+    file_numbers <- getHospitalNumbers(exDir)
+    unpackClinicResult(exDir, file_numbers)
+    case_data <- processFiles(exDir, file_numbers)
+    if(!is.null(case_data)) {
+      timeframe <- performAnalysis(case_data)
+    } else {
+      timeframe <- data.frame("no_data" = {"no_data"})
+      print("case_data is NULL, check the given table for missing columns.")
+    }
+    timeframe_path <- paste0(exDir, "/timeframe.csv")
+    write.csv(timeframe, timeframe_path, row.names = FALSE)
+    print(paste0("timeframe_path:",timeframe_path))
+
 }
 
-# file_numbers <- c(1:3, 8:35,37:44,47:52,55,56,60, 68,69,70)
-unpackZip(filepath, exDir)
-file_numbers <- getHospitalNumbers(exDir)
-unpackClinicResult(exDir, file_numbers)
-case_data <- processFiles(exDir, file_numbers)
-if(!is.null(case_data)) {
-  timeframe <- performAnalysis(case_data)
-} else {
-  timeframe <- data.frame("no_data" = {"no_data"})
-  print("case_data is NULL, check the given table for missing columns.")
-}
-timeframe_path <- paste0(exDir, "/timeframe.csv")
-write.csv(timeframe, timeframe_path, row.names = FALSE)
-print(paste0("timeframe_path:",timeframe_path))  
-
+main()
 
