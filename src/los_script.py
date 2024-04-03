@@ -31,114 +31,10 @@ import sys
 import urllib
 import xml.etree.ElementTree as et
 import shutil
-from re import Match
 import paramiko
 import requests
 import toml
-
-
-class StatusXmlManager:
-    """
-    A class for managing operations on an XML status file.
-    """
-
-    def __init__(self):
-        self.path_status_xml = os.path.join(os.environ['MISC.WORKING_DIR'], 'status.xml')
-        if not os.path.isfile(self.path_status_xml):
-            self.__init_status_xml()
-        self.__format_date = '%Y-%m-%d %H:%M:%S'
-        self.__element_tree = et.parse(self.path_status_xml)
-
-    def __init_status_xml(self):
-        """
-        Creates a new 'status.xml' file in the working directory with an empty <status> tag.
-        """
-        root = et.Element('status')
-        self.__element_tree = et.ElementTree(root)
-        self.__save_current_status_xml_as_file()
-
-    def __save_current_status_xml_as_file(self):
-        self.__element_tree.write(self.path_status_xml, encoding='utf-8')
-
-    def get_element_by_id(self, id_request: str) -> et.Element:
-        root = self.__element_tree.getroot()
-        for request_status in root.iter('request-status'):
-            id_element = request_status.find('id')
-            if id_element is not None and id_element.text == id_request:
-                return request_status
-        return None
-
-    def update_or_add_element(self, id_request: str, completion: str):
-        root = self.__element_tree.getroot()
-        for request_status in root.findall('request-status'):
-            id_element = request_status.find('id')
-            if id_element is not None and id_element.text == id_request:
-                request_status.find('completion').text = completion
-                self.__add_or_update_date_tag_in_element(request_status, 'last-update')
-                break
-        else:
-            new_request_status = et.SubElement(root, 'request-status')
-            et.SubElement(new_request_status, 'id').text = id_request
-            et.SubElement(new_request_status, 'completion').text = completion
-            et.SubElement(new_request_status, 'uploaded').text = datetime.utcnow().strftime(self.__format_date)
-        self.__save_current_status_xml_as_file()
-
-    def __add_or_update_date_tag_in_element(self, parent: et.Element, name_tag: str) -> None:
-        child = parent.find(name_tag)
-        if child is None:
-            et.SubElement(parent, name_tag).text = datetime.utcnow().strftime(self.__format_date)
-        else:
-            child.text = datetime.utcnow().strftime(self.__format_date)
-
-    def add_delete_tag_to_element(self, id_request: str):
-        parent = self.get_element_by_id(id_request)
-        self.__add_or_update_date_tag_in_element(parent, 'deleted')
-        self.__save_current_status_xml_as_file()
-
-    def get_request_completion_as_dict(self) -> dict:
-        """
-        Extract the request ID and completion from each element in the status XML.
-        Returns them as a dictionary.
-        """
-        root = self.__element_tree.getroot()
-        list_ids = [element.text for element in root.findall('.//id')]
-        list_completion = [element.text for element in root.findall('.//completion')]
-        return dict(zip(list_ids, list_completion))
-
-    def compare_request_completion_between_broker_and_sftp(self, dict_broker: dict, dict_xml: dict) -> (set, set, set):
-        set_new = set(dict_broker.keys()).difference(set(dict_xml.keys()))
-        set_update = self.__get_requests_to_update(dict_broker, dict_xml)
-        set_delete = self.__get_requests_to_delete(dict_broker, dict_xml)
-        logging.info(
-            f"{len(set_new)} new requests, {len(set_update)} requests to update, {len(set_delete)} requests to delete")
-        return set_new, set_update, set_delete
-
-    def __get_requests_to_update(self, dict_broker: dict, dict_xml: dict) -> set:
-        """
-        A request has to be updated on sftp server if its completion rate changed
-        """
-        set_update = set(dict_broker.keys()).intersection(set(dict_xml.keys()))
-        for key in set_update.copy():
-            if dict_broker.get(key) == dict_xml.get(key):
-                set_update.remove(key)
-            if self.__is_request_tagged_as_deleted(key):
-                set_update.remove(key)
-        return set_update
-
-    def __get_requests_to_delete(self, dict_broker: dict, dict_xml: dict) -> set:
-        """
-        A request with the tag "deleted" is already deleted on sftp server
-        """
-        set_delete = set(dict_xml.keys()).difference(set(dict_broker.keys()))
-        for key in set_delete.copy():
-            if self.__is_request_tagged_as_deleted(key):
-                set_delete.remove(key)
-        return set_delete
-
-    def __is_request_tagged_as_deleted(self, id_request: str) -> bool:
-        parent = self.get_element_by_id(id_request)
-        child = parent.find('deleted')
-        return child is not None
+from requests import Response
 
 
 class Manager:
@@ -149,8 +45,7 @@ class Manager:
     def __init__(self, path_toml: str):
         self.__verify_and_load_toml(path_toml)
         self.__broker = BrokerRequestResultManager()
-        self.__sftp = SftpFileManager()
-        self.__xml = StatusXmlManager()
+        # self.__sftp = SftpFileManager()
 
     def __flatten_dict(self, d, parent_key='', sep='.'):
         items = []
@@ -168,7 +63,7 @@ class Manager:
         and sets the environment variables based on the loaded configuration.
         """
         required_keys = {'BROKER.URL', 'BROKER.API_KEY', 'REQUESTS.TAG', 'SFTP.HOST', 'SFTP.USERNAME',
-                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR', 'MISC.TEMP_DIR',
+                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR',
                          'MISC.TEMP_ZIP_DIR', 'RSCRIPT.SCRIPT_PATH'}
         if not os.path.isfile(path_toml):
             raise SystemExit('invalid TOML file path')
@@ -242,6 +137,7 @@ class BrokerRequestResultManager:
         self.__admin_api_key = os.environ['BROKER.API_KEY']
         self.__tag_requests = os.environ['REQUESTS.TAG']
         self.__working_dir = os.environ['MISC.WORKING_DIR']
+        self.__temp_dir = os.environ['MISC.TEMP_ZIP_DIR']
         self.__check_broker_server_availability()
 
     def __check_broker_server_availability(self):
@@ -269,65 +165,64 @@ class BrokerRequestResultManager:
         return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
                 'Accept': mediatype}
 
-    def download_request_result_to_working_dir(self, id_request: str) -> str:
+    def download_latest_broker_result_by_set_tag(self) -> str:
         """
-        Retrieve the request results from the AKTIN Broker for a specific request ID.
-        To download request results from AKTIN broker, they have to be exported first as a temporarily
-        downloadable file with an uuid.
+        Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
+        :return: path to the resulting zip archive
         """
+        id_request = self.__get_id_of_latest_request_by_set_tag()
+        uuid = self.__get_uuid_from_request_id(id_request)
         logging.info('Downloading results of %s', id_request)
-        id_export = self.__export_request_result(id_request)
-        zip_file_path = self.__download_exported_result_to_working_dir(id_export, id_request)
+        result_stream = self.__download_exported_result_to_working_dir(uuid)
+        logging.info('Download finished!')
+        zip_file_path = self.__parse_broker_result_stream(result_stream, id_request)
         return zip_file_path
 
-    def __export_request_result(self, id_request: str) -> str:
+    def __get_uuid_from_request_id(self, id_request: str) -> str:
         """
-        Export the request results as a temporarily downloadable file with a unique ID.
+        Request a UUID from AKTIN Broker to identify the needed data package
         """
         url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
         response = requests.post(url, headers=self.__create_basic_header('text/plain'), timeout=self.__timeout)
         response.raise_for_status()
-        return response.text
+        uuid = response.text
+        return uuid
 
-    def __download_exported_result_to_working_dir(self, id_export: str, id_request: str) -> str:
+    def __download_exported_result_to_working_dir(self, uuid: str) -> Response:
         """
         Download the exported request results as a ZIP file inside the folder WORKING_DIR.
         Returns the path to the downloaded ZIP file.
         """
-        url = self.__append_to_broker_url('broker', 'download', id_export)
-        response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-        response.raise_for_status()
-        zip_file_path = os.path.join(os.environ['MISC.TEMP_ZIP_DIR'], f'{id_request}_result.zip')
+        url = self.__append_to_broker_url('broker', 'download', uuid)
+        broker_result_stream = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+        broker_result_stream.raise_for_status()
+        return broker_result_stream
+
+    def __parse_broker_result_stream(self, broker_result_stream, id_request: str):
+        """
+        Takes a stream containing a broker result and extracts it to a zip archive in the specified temporary
+        directory self.__temp_dir
+        """
+        zip_file_path = os.path.join(self.__temp_dir, f'{id_request}_result.zip')
         with open(zip_file_path, 'wb') as zip_file:
-            zip_file.write(response.content)
+            zip_file.write(broker_result_stream.content)
         return zip_file_path
 
-    def request_highest_id_by_tag_from_broker(self, tag):
+    def __get_id_of_latest_request_by_set_tag(self):
         """
-        Requests the highest ID for a given tag from AKTIN Broker. Highest ID = latest entry
+        Requests the highest ID for a set tag from AKTIN Broker. Highest ID = latest entry
         :return: id of the last result
         """
         url = self.__append_to_broker_url('broker', 'request', 'filtered')
         url = '?'.join([url, urllib.parse.urlencode(
-            {'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
+            {'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__tag_requests})])
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
 
         list_request_id = [element.get('id') for element in et.fromstring(response.content)]
         if len(list_request_id) < 1:
-            raise Exception(f"no element with tag:\"{tag}\" was found!")
+            raise Exception(f"no element with tag:\"{self.__tag_requests}\" was found!")
         return max(list_request_id)
-
-    def get_request_ids_with_tag(self, tag: str) -> list:
-        logging.info('Checking for requests with tag %s', tag)
-        url = self.__append_to_broker_url('broker', 'request', 'filtered')
-        url = '?'.join([url, urllib.parse.urlencode(
-            {'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % tag})])
-        response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-        response.raise_for_status()
-        list_request_id = [element.get('id') for element in et.fromstring(response.content)]
-        logging.info('%d requests found', len(list_request_id))
-        return list_request_id
 
 
 class LosScriptManager:
@@ -336,26 +231,20 @@ class LosScriptManager:
     flow, executes the rscript and clears a directory in wich temporary files are stored.
     """
 
-    def main(self, path_toml: str) -> None:
-        manager = Manager(path_toml)
-        r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
-        request_tag = os.environ['REQUESTS.TAG']
+    def __init__(self, path_toml: str):
+        self.__manager = Manager(path_toml)
+        self.__broker_manager = BrokerRequestResultManager()
+        self._r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
+        self.__temp_result_path = os.environ['MISC.TEMP_ZIP_DIR']
 
-        # construct path to resource folder where the broker results are stored
-        broker_result_path = os.environ['MISC.TEMP_ZIP_DIR']
-        # create instances of the broker request id manager and the broker request result manager
+    def main(self) -> None:
+        zip_file_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
+        r_result_path = self.execute_given_rscript(zip_file_path)
+        # manager.__sftp.clean_and_upload_to_sftp_server(r_result_path, manager)
+        self.clean_temp_dir()
 
-        zip_file_path = self.download_latest_data_export_from_broker_by_tag(request_tag, manager)
-        r_result_path = self.execute_given_rscript(zip_file_path, r_script_path)
-
-        manager.__sftp.clean_and_upload_to_sftp_server(r_result_path, manager)
-        # delete resources folder as preparation for new results
-        self.delete_contents_of_dir(broker_result_path)
-
-    def execute_given_rscript(self, broker_result_zip_path: str, rscript_path: str) -> Match[str] | None:
-        os.chmod(rscript_path, 0o755)
-
-        output = subprocess.check_output(['Rscript', rscript_path, broker_result_zip_path])
+    def execute_given_rscript(self, zip_file_path: str):
+        output = subprocess.check_output(['Rscript', self._r_script_path, zip_file_path])
         logging.info("R Script finished successfully")
         # Decode the output to string if necessary
         output_string = output.decode("utf-8")
@@ -363,13 +252,13 @@ class LosScriptManager:
         result_path = re.search('timeframe_path:.*\"', output_string)[0].split(':')[1]
         return result_path
 
-    def delete_contents_of_dir(self, path) -> None:
+    def clean_temp_dir(self) -> None:
         try:
             # Use shutil.rmtree to remove all files and subdirectories within the directory
-            shutil.rmtree(path)
+            shutil.rmtree(self.__temp_result_path)
             # Recreate the directory if needed
-            os.mkdir(path)
-            logging.info(f"Contents of '{path}' have been deleted.")
+            os.mkdir(self.__temp_result_path)
+            logging.info(f"Contents of '{self.__temp_result_path}' have been deleted.")
         except Exception as e:
             logging.error(e)
 
@@ -377,8 +266,7 @@ class LosScriptManager:
         """This method manages the download of the latest broker data export, by using the existing methods from
         BrokerRequestResultManager and managing them"""
         broker_manager = manager.get_broker()
-        request_id = broker_manager.request_highest_id_by_tag_from_broker(request_tag)
-        zip_file_path = broker_manager.download_request_result_to_working_dir(request_id)
+        zip_file_path = broker_manager.download_latest_broker_result_by_set_tag()
         return zip_file_path
 
     def clean_and_upload_to_sftp_server(self, r_result_path, manager: Manager) -> None:
@@ -394,5 +282,5 @@ if __name__ == '__main__':
         raise SystemExit('path to config TOML is missing!')
 
     toml_path = sys.argv[1]
-    losmanager = LosScriptManager()
-    losmanager.main(toml_path)
+    losmanager = LosScriptManager(toml_path)
+    losmanager.main()

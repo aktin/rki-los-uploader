@@ -16,6 +16,14 @@ directory, if not change the path:
 If you encounter Problems installing R packages with 'install.package', use this comand in the terminal and try to install again:
 ```sudo apt install libssl-dev libcurl4-openssl-dev unixodbc-dev libxml2-dev libmariadb-dev libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev```
 
+## Configuration TOML
+Create a toml file 
+
+| Header | Attribute | Description                  |
+|--------|-----------|------------------------------|
+| BROKER | URL       | Literal path to AKTIN broker |
+|        | API_KEY   | Authorisation key for broker |
+| Cell 7 | Cell 8    | Cell 9                       |
 
 
 
