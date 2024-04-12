@@ -1,0 +1,35 @@
+@startuml
+start
+#Pink:res:diagnoses.csv;
+partition Script {
+    :load csv;
+    :check for relevant columns;
+    if (All existing?) then (no)
+        :Handle Error;
+        kill
+    endif
+    ->yes;
+    while (next row exist?) is(yes)
+        partition Subroutine {
+            #Pink:res:row;
+            :Extract encounter ID (Fallnummer);
+            :Hash encounter ID;
+            if (encounter ID hash (IDE) exist in DWH) then (no)
+                :Handle!!!;
+                kill
+            endif
+            ->yes;
+            :get patient IDE;
+            :get patient num from patient_mapping;
+            if (entry exist in observation_fact?) then (yes)
+                :Delete entry in DWH;
+            endif
+            :convert entry to i2b2 format;
+            :Upload entry;
+        }
+    endwhile (no)
+}
+
+
+stop
+@enduml
