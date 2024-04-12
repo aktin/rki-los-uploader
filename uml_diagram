@@ -1,0 +1,24 @@
+@startuml
+UpdateManager <|-- CSVManager
+UpdateManager <|-- EntryDTO
+UpdateManager <|-- DWHManager
+UpdateManager <|-- HashService
+
+UpdateManager : -contains a Singeton of DWHManager
+UpdateManager : -Costructs update pipeline
+
+CSVManager : -load CSV file
+CSVManager : -provide CSV file
+CSVManager : -checks CSV for correctness
+
+EntryDTO : -stores a row of the CSV
+EntryDTO : -returns itself i2b2 conform
+
+DWHManager : -connection to Data Warehouse (DWH)
+DWHManager : -checks if entries exist in DWH
+DWHManager : -updates entries
+
+HashService : -hashes given values after AKTIN guidelines
+
+@enduml
+
