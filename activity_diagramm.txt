@@ -12,10 +12,10 @@ partition Script {
     while (next row exist?) is(yes)
         partition Subroutine {
             #Pink:res:row;
-            :Extract encounter ID (Fallnummer);
+            :Extract encounter ID;
             :Hash encounter ID;
             if (encounter ID hash (IDE) exist in DWH) then (no)
-                :Handle!!!;
+                :skip this row;
                 kill
             endif
             ->yes;

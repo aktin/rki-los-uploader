@@ -31,6 +31,7 @@ import sys
 import urllib
 import xml.etree.ElementTree as et
 import shutil
+
 import paramiko
 import requests
 import toml
@@ -44,8 +45,6 @@ class Manager:
 
     def __init__(self, path_toml: str):
         self.__verify_and_load_toml(path_toml)
-        self.__broker = BrokerRequestResultManager()
-        # self.__sftp = SftpFileManager()
 
     def __flatten_dict(self, d, parent_key='', sep='.'):
         items = []
@@ -78,15 +77,11 @@ class Manager:
             missing_keys = required_keys - loaded_keys
             raise SystemExit(f'following keys are missing in config file: {missing_keys}')
 
-    def get_broker(self):
-        return self.__broker
-
 
 class SftpFileManager:
     """
     A class for managing file operations with an SFTP server.
     """
-
     def __init__(self):
         self.__sftp_host = os.environ['SFTP.HOST']
         self.__sftp_username = os.environ['SFTP.USERNAME']
@@ -171,16 +166,16 @@ class BrokerRequestResultManager:
         :return: path to the resulting zip archive
         """
         id_request = self.__get_id_of_latest_request_by_set_tag()
-        uuid = self.__get_uuid_from_request_id(id_request)
+        uuid = self.__export_request_result(id_request)
         logging.info('Downloading results of %s', id_request)
-        result_stream = self.__download_exported_result_to_working_dir(uuid)
+        result_stream = self.__download_exported_result(uuid)
         logging.info('Download finished!')
-        zip_file_path = self.__parse_broker_result_stream(result_stream, id_request)
+        zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request)
         return zip_file_path
 
-    def __get_uuid_from_request_id(self, id_request: str) -> str:
+    def __export_request_result(self, id_request: str) -> str:
         """
-        Request a UUID from AKTIN Broker to identify the needed data package
+        Returns a UUID from response from AKTIN
         """
         url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
         response = requests.post(url, headers=self.__create_basic_header('text/plain'), timeout=self.__timeout)
@@ -188,7 +183,7 @@ class BrokerRequestResultManager:
         uuid = response.text
         return uuid
 
-    def __download_exported_result_to_working_dir(self, uuid: str) -> Response:
+    def __download_exported_result(self, uuid: str) -> Response:
         """
         Download the exported request results as a ZIP file inside the folder WORKING_DIR.
         Returns the path to the downloaded ZIP file.
@@ -198,12 +193,13 @@ class BrokerRequestResultManager:
         broker_result_stream.raise_for_status()
         return broker_result_stream
 
-    def __parse_broker_result_stream(self, broker_result_stream, id_request: str):
+    def __store_broker_response_as_zip(self, broker_result_stream, id_request: str):
         """
         Takes a stream containing a broker result and extracts it to a zip archive in the specified temporary
         directory self.__temp_dir
         """
-        zip_file_path = os.path.join(self.__temp_dir, f'{id_request}_result.zip')
+        # id request als input raus und name aus dem header nehmen
+        zip_file_path = os.path.join(self.__temp_dir, f'{id_request}_result.zip')  # suche id in stream
         with open(zip_file_path, 'wb') as zip_file:
             zip_file.write(broker_result_stream.content)
         return zip_file_path
@@ -225,6 +221,36 @@ class BrokerRequestResultManager:
         return max(list_request_id)
 
 
+class DirectoryManager:
+
+    def __init__(self):
+        """
+        :param test_directory: True if this class is used in a testing environment and needs to store the files in this environment
+        """
+        self._temp_work_path = os.environ['MISC.TEMP_ZIP_DIR']
+        self._broker_result_directory = self._temp_work_path+"/broker_result"
+
+    def create_temp_directory(self):
+        if not os.path.exists(self._temp_work_path):
+            os.makedirs(self._temp_work_path)
+        if not os.path.exists(self._broker_result_directory):
+            os.makedirs(self._broker_result_directory)
+
+    def get_temp_directory(self):
+        return self._temp_work_path
+
+    def get_broker_result_directory(self):
+        return self._broker_result_directory
+
+    def cleanup(self):
+        try:
+            # Use shutil.rmtree to remove all files and subdirectories within the directory
+            shutil.rmtree(self._temp_work_path)
+            logging.info(f"Contents of '{self._temp_work_path}' have been deleted.")
+        except Exception as e:
+            logging.error(e)
+
+
 class LosScriptManager:
     """
     This class manages helper methods for managing the execution and flow of the Rscript. It starts the main method
@@ -234,14 +260,17 @@ class LosScriptManager:
     def __init__(self, path_toml: str):
         self.__manager = Manager(path_toml)
         self.__broker_manager = BrokerRequestResultManager()
+        # self.__sftp_manager = SftpFileManager()
         self._r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
         self.__temp_result_path = os.environ['MISC.TEMP_ZIP_DIR']
 
     def main(self) -> None:
+        dir_manager = DirectoryManager()
+        dir_manager.create_temp_directory()
         zip_file_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
         r_result_path = self.execute_given_rscript(zip_file_path)
-        # manager.__sftp.clean_and_upload_to_sftp_server(r_result_path, manager)
-        self.clean_temp_dir()
+        self.clean_and_upload_to_sftp_server(r_result_path)
+        dir_manager.cleanup()
 
     def execute_given_rscript(self, zip_file_path: str):
         output = subprocess.check_output(['Rscript', self._r_script_path, zip_file_path])
@@ -252,25 +281,8 @@ class LosScriptManager:
         result_path = re.search('timeframe_path:.*\"', output_string)[0].split(':')[1]
         return result_path
 
-    def clean_temp_dir(self) -> None:
-        try:
-            # Use shutil.rmtree to remove all files and subdirectories within the directory
-            shutil.rmtree(self.__temp_result_path)
-            # Recreate the directory if needed
-            os.mkdir(self.__temp_result_path)
-            logging.info(f"Contents of '{self.__temp_result_path}' have been deleted.")
-        except Exception as e:
-            logging.error(e)
-
-    def download_latest_data_export_from_broker_by_tag(self, request_tag, manager: Manager):
-        """This method manages the download of the latest broker data export, by using the existing methods from
-        BrokerRequestResultManager and managing them"""
-        broker_manager = manager.get_broker()
-        zip_file_path = broker_manager.download_latest_broker_result_by_set_tag()
-        return zip_file_path
-
-    def clean_and_upload_to_sftp_server(self, r_result_path, manager: Manager) -> None:
-        sftp_manager = manager.__sftp
+    def clean_and_upload_to_sftp_server(self, r_result_path) -> None:
+        sftp_manager = self.__sftp_manager
         sftp_files = sftp_manager.list_files()
         for sftp_file in sftp_files:
             sftp_manager.delete_file(sftp_file)

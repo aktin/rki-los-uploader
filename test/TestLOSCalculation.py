@@ -1,12 +1,9 @@
 import os
 import shutil
-import sys
 import unittest
 import zipfile
-from src.los_script import LosScriptManager
+from src.los_script import LosScriptManager, DirectoryManager
 import pandas as pd
-
-import toml
 
 
 class TestLOSCalculation(unittest.TestCase):
@@ -17,9 +14,11 @@ class TestLOSCalculation(unittest.TestCase):
     def setUp(self):
         path_toml = "/home/wiliam/Documents/Aktin/unittest_config.toml"
         self.losman = LosScriptManager(path_toml)
+        self.dir_manager = DirectoryManager()
+        self.dir_manager.create_temp_directory()
         self.result_dir = "resources/temp"
         self.unittest_result_path = "resources/temp/unittest_0_result"
-        self.abs_path_result = "/home/wiliam/PycharmProjects/LOC_Calculator/test/resources/temp/unittest_0_result.zip"
+        self.abs_path_result = self.dir_manager.get_temp_directory() + "/unittest_0_result.zip"
 
     def test_single_clinic(self):
         test_data = [("aufnahme_ts	entlassung_ts	triage_ts	a_encounter_num	a_encounter_ide	a_billing_ide\n"
@@ -96,7 +95,7 @@ class TestLOSCalculation(unittest.TestCase):
             # create pandas dataframe with results from R script
             results = pd.DataFrame(result_data[1:-1], columns=result_data[0])
             expected = pd.DataFrame(expected_data[1:], columns=expected_data[0])
-            self.losman.clean_temp_dir()
+            self.dir_manager.cleanup()
             return results.equals(expected)
 
     def __pack_zip__(self, contents: list[str]):
