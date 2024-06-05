@@ -1,6 +1,6 @@
 [BROKER]
-URL = "http://localhost:8080"
-API_KEY = "xxxAdmin1234"
+URL = "https://aktin-test-broker.klinikum.rwth-aachen.de"
+API_KEY = "xxxBrokerAdmin999"
 
 [REQUESTS]
 TAG = "rki"
@@ -17,3 +17,10 @@ PATH_ENCRYPTION_KEY = "/opt/rki.key"
 
 [MISC]
 WORKING_DIR = "/opt"
+TEMP_ZIP_DIR = '/opt/resources/temp'
+
+
+[RSCRIPT]
+SCRIPT_PATH = '/opt/LOSCalculator.R'
+R_DIRECTORY = '/usr/lib/R/bin/R'
+

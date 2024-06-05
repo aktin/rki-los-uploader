@@ -14,15 +14,15 @@ current_dir=$(pwd)
 readonly PROJECT_DIR=${current_dir%$PROJECT_NAME*}$PROJECT_NAME
 
 echo -e "${YEL} Build the docker-compose stack ${WHI}"
-docker-compose -f $PROJECT_DIR/test/integration/docker/docker-compose.yml up -d --force-recreate --build
+docker compose -f $PROJECT_DIR/test/integration/docker/docker-compose.yml up -d --force-recreate --build
 
 echo -e "${YEL} Copy requirements.txt to python container and install dependencies ${WHI}"
 docker cp $PROJECT_DIR/requirements.txt python:/opt/
 docker exec python pip install --no-cache-dir -r requirements.txt
+docker exec python pip freeze
 
 echo -e "${YEL} Copy python scripts from repository to python container and run unittest ${WHI}"
 docker cp $PROJECT_DIR/src/los_script.py python:/opt/
-docker exec python pytest test_xml_manager.py
 
 echo -e "${YEL} Broker creates 3 requests with tag default and 3 with tag rki ${WHI}"
 for i in {0..2}; do
@@ -49,6 +49,9 @@ done
 
 echo -e "${YEL} Execute the los_script python script ${WHI}"
 docker exec python python los_script.py /opt/settings.toml
+
+#echo -e "${YEL} Execute the los_script python script ${WHI}"
+#docker exec python python test_sftp_connection.py
 
 echo -e "${YEL} Container python must have 3 entries in his status.xml ${WHI}"
 NUMBER_ENTRIES=$(docker exec python ./count_tag_in_status_xml.sh request-status)

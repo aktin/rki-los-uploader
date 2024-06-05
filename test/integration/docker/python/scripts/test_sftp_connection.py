@@ -1,5 +1,7 @@
 import logging
 import os
+import tempfile
+import unittest
 
 import paramiko
 
@@ -8,6 +10,7 @@ class SftpFileManager:
     """
     A class for managing file operations with an SFTP server.
     """
+
     def __init__(self):
         self.__sftp_host = os.environ['SFTP.HOST']
         self.__sftp_username = os.environ['SFTP.USERNAME']
@@ -46,7 +49,18 @@ class SftpFileManager:
         except FileNotFoundError:
             logging.info('%s could not be found', filename)
 
-if __name__ == '__main__':
-    sftp_manager = SftpFileManager()
-    files = sftp_manager.list_files()
-    print(files)
+
+class SftpUnittest(unittest.TestCase):
+    def setUp(self):
+        self.__sftp_manager = SftpFileManager()
+
+    def test_connection(self):
+        self.assertTrue(self.__sftp_manager.list_files().__contains__("rki"))
+
+    def test_upload(self):
+        filename = 'upload_test_file.txt'
+        with open(filename, 'w') as file:
+            self.__sftp_manager.upload_file(filename)
+            self.assertTrue(self.__sftp_manager.list_files().__contains__("upload_test_file"))
+            self.assertFalse(self.__sftp_manager.list_files().__contains__("This should not exist in the sftp server!"))
+
