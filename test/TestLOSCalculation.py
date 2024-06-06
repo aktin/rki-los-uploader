@@ -2,7 +2,7 @@ import os
 import shutil
 import unittest
 import zipfile
-from src.los_script import LosScriptManager, DirectoryManager
+from los_script import LosScriptManager, DirectoryManager
 import pandas as pd
 
 
