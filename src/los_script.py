@@ -260,7 +260,7 @@ class LosScriptManager:
     def __init__(self, path_toml: str):
         self.__manager = Manager(path_toml)
         self.__broker_manager = BrokerRequestResultManager()
-        # self.__sftp_manager = SftpFileManager()
+        self.__sftp_manager = SftpFileManager()
         self._r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
         self.__temp_result_path = os.environ['MISC.TEMP_ZIP_DIR']
 
@@ -279,6 +279,7 @@ class LosScriptManager:
         output_string = output.decode("utf-8")
         # search output for regex "timeframe_path:"
         result_path = re.search('timeframe_path:.*\"', output_string)[0].split(':')[1]
+        result_path = result_path.replace('\"', '')
         return result_path
 
     def clean_and_upload_to_sftp_server(self, r_result_path) -> None:
@@ -292,7 +293,6 @@ class LosScriptManager:
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         raise SystemExit('path to config TOML is missing!')
-
     toml_path = sys.argv[1]
     losmanager = LosScriptManager(toml_path)
     losmanager.main()
