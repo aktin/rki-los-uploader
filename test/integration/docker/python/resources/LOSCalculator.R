@@ -1,6 +1,7 @@
 #### BMG Pandemieradar NEU ####
 required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
 for (package_name in required_packages) {
+  install.packages(package_name)
   library(package_name, character.only = TRUE)
 }
 
