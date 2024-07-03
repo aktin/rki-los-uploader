@@ -1,11 +1,27 @@
 #### BMG Pandemieradar NEU ####
 required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
+
+# install all required packages
 for (package_name in required_packages) {
-  library(package_name, character.only = TRUE)
+  if (!require(package_name, character.only = TRUE)){
+    install.packages(package_name)
+    library(package_name, character.only = TRUE)
+  } 
 }
 
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
+conflicts_prefer(mosaic::sum)
+
+last_cw_last_month <- 29
+first_cw_next_month <- 34
+
+max_accepted_error <- 25 # in %, used to exclude data sources with an error rate of i% or higher
+max_accepted_los <- 415 # in min, used to exclude data sources with an mean length of stay of i mins and higher
+
+discharge_col_name <- 'entlassung_ts' # name of the discharge column from broker export data
+admittance_col_name <- 'aufnahme_ts' # name of the admittance column from broker export data
+
 
 #' Unpacks a zip file from the specified input directory to the specified extraction directory.
 #' @param inDir: Character string specifying the path to the input zip file.
@@ -22,21 +38,23 @@ unpackZip <- function(inDir, exDir) {
   })
 }
 
-#' This function unpacks the data from the given path to a zip file
-#' @param inDir: path to a zip file fetched from the broker
-#' @param file_numbers: IDs of the clinics, whose data is to be calculated
+#' This function receives the directory of the unzipped broker result. Each 
+#' result zip in this directory will also be unzipped. Each result zip contains 
+#' a number of the originating clinic. 
+#' @param exDir: the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
+#' @param file_numbers: result IDs in exDir
 unpackClinicResult <- function(exDir, file_numbers) {
   for (i in file_numbers) {
-    inDirZip <- file.path(exDir, sprintf("%d_result.zip", i))
-    exDirZip <- file.path(exDir, sprintf("%d_result", i))
-    if (!dir.exists(exDirZip)) {
-      dir.create(exDirZip)
+    path_zipped <- file.path(exDir, sprintf("%d_result.zip", i))
+    path_unzipped <- file.path(exDir, sprintf("%d_result", i))
+    if (!dir.exists(path_unzipped)) {
+      dir.create(path_unzipped)
     }
     tryCatch({
-      unzip(inDirZip, exdir = exDirZip)
-      print(paste("Data from", inDirZip," successfully unpacked in:", exDirZip))
+      unzip(path_zipped, exdir = path_unzipped)
+      print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
     }, error = function(e) {
-      warning(paste("An error occurred unpacking the data:", e$message))
+      warning(paste("An error occurred unpacking the result sets:", e$message))
     })
   }
 }
@@ -48,28 +66,28 @@ unpackClinicResult <- function(exDir, file_numbers) {
 #' @param file_numbers hospital numbers in directory name to identify corresponding hospital
 processFiles <- function(exDir, file_numbers) {
   all_data_df <- data.frame()
+  error_rates <- data.frame(clinic=NA, errors=NA) # counts the number of invalid entries for each clinic
+  
   for (i in file_numbers) {
     filepath_i <- file.path(exDir, sprintf("%d_result/case_data.txt", i), fsep = "/")
     print(paste("This is used in processFiles: ", filepath_i))
     
     if (file.exists(filepath_i)) {
+      
       df <- read_delim(
         filepath_i,
         delim = "\t", escape_double = FALSE,
         trim_ws = TRUE
       ) %>% mutate(clinic = i)
-     
-      if(!"entlassung_ts" %in% colnames(df)) {
+      
+      if(!discharge_col_name %in% colnames(df)) {
         next
       } 
       
-      if(!"aufnahme_ts" %in% colnames(df)) {
+      if(!admittance_col_name %in% colnames(df)) {
         df$aufnahme_ts <- NA
       }
       
-      df <- df[complete.cases(df$entlassung_ts), ]  # remove rows with empty entlassung_ts
-      df <- df %>% mutate(aufnahme_ts = coalesce(aufnahme_ts, triage_ts)) # empty aufnahme_ts are filled with corresponding triage_ts
-      df <- df[complete.cases(df$aufnahme_ts), ]  # remove rows where aufnahme_ts is still empty
       all_data_df <- rbind(all_data_df, df)
       
     } else {
@@ -87,8 +105,8 @@ processFiles <- function(exDir, file_numbers) {
 }
 
 #' This method calculates length of stay, analyses them and calculates a summary
-#' @param case_data: A data frame containing case data.
-#' @return A data frame representing the results of the analysis.
+#' @param case_data: A data frame containing case data of all clinics
+#' @return A data frame representing the results of the length of stay analysis.
 performAnalysis <- function(case_data) {
   filledCaseData <- fillCaseData(case_data)
   num_of_cases <- countClinics(filledCaseData)
@@ -100,34 +118,55 @@ performAnalysis <- function(case_data) {
   return(timeframe)
 }
 
-# fills the case_data dataframe with info
+#' This method receives a data frame and put all datetime entries to the same 
+#' default timezone. It generates additional data from them like calendar week 
+#' and length of stay.
+#' @param case_data: a data frame containing emergency department data
 fillCaseData <- function(case_data) {
+  # set dateteimes to same timezone
   case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts)
   case_data$entlassung_ts <- with_tz(case_data$entlassung_ts)
   case_data$triage_ts <- with_tz(case_data$triage_ts)
+  
+  # extract additional information from datetimes
   case_data$jahr <- year(case_data$aufnahme_ts)
   case_data$cw <- format(case_data$aufnahme_ts, "%V")
   case_data$calendarweek_year <- format(case_data$aufnahme_ts, "%G")
-  case_data$los <- difftime(case_data$entlassung_ts, case_data$aufnahme_ts, units = "mins")
+  
+  # Use aufnahme_ts as default and reference value
+  case_data$first_ts <- as.POSIXct(ifelse(is.na(case_data$aufnahme_ts), case_data$triage_ts, case_data$aufnahme_ts), tz = "UTC")
+  # if triage is beore aufnahme, use triage_ts in first_ts
+  case_data$first_ts <- as.POSIXct(ifelse(!is.na(case_data$first_ts) & !is.na(case_data$triage_ts) & case_data$first_ts > case_data$triage_ts, case_data$triage_ts, case_data$aufnahme_ts), tz = "UTC")# todo else part is unnecessary, only keep triagets part
+  case_data$los <- difftime(case_data$entlassung_ts, case_data$first_ts, units = "mins")
   return(case_data)
 }
 
-# a help-function to count the number of clinics
+#' This method counts the number of clinics represented in case_data data frame
+#' @param case_data: a data frame containing emergency department data
 countClinics <- function(case_data) {
   num_of_cases <- data.frame(table(case_data$clinic))
   colnames(num_of_cases)[1] <- "clinic"
   return(num_of_cases)
 }
 
-#' This method uses the given case_data table and filters after los entries
+#' This method receives a data frame and filters entries after the los column
 #' @param case_data: a table of case data with length of stay already calculated
 filterCases <- function(case_data) {
-  db <- case_data %>%
-    dplyr::filter(is.na(los) == FALSE) %>%
-    dplyr::filter(los >= 1) %>%
-    dplyr::filter(los < 1440)
-  db$los <- as.numeric(db$los)
+  db<-case_data%>%filter(is.na(los)==FALSE)
+  db<-db%>%filter(los >=1)
+  db<-db%>%filter(los <1440)
+  db$los<-as.numeric(db$los)
+  db2<-db
   return(db)
+}
+
+#' Summarise the length of stay data by clinic.
+#' @param db: A data frame containing case data.
+#' @return A data frame representing the summary statistics of length of stay (LOS) data grouped by clinic.
+summariseLos <- function(db) {
+  result <- data.frame(favstats(db$los ~ db$clinic))
+  names(result)[1] <- "clinic"  
+  return(result)
 }
 
 #' Filters the length of stay data by clinic.
@@ -139,12 +178,18 @@ filterLos <- function(db) {
   return(result)
 }
 
+#' This Method removes clinic with high error rates and unrealistic high mean waiting times from table
+#' @param los: table grouped by clinic and summarised los data
+#' @param num_of_cases: clinic numbers
 filterLosValid <- function(los, num_of_cases) {
   los <- left_join(los, num_of_cases, by="clinic")
+  for(i in 1:nrow(los)) {
+    los$Freq[los$clinic==i] <- los$Freq[los$clinic==i]
+  }
   los$np <- los$Freq - los$n
   los$np_prozent <- (los$np / los$Freq) * 100
-  los <- los %>% dplyr::filter(np_prozent < 20)
-  los <- los %>% dplyr::filter(mean < 300)
+  los <- los %>% dplyr::filter(np_prozent < max_accepted_error)
+  los <- los %>% dplyr::filter(mean < max_accepted_los)
   los <- data.frame(los$clinic)
   colnames(los)[1] <- "clinic"
   los$clinic <- as.double(los$clinic)
@@ -169,7 +214,8 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getFirstCalendarWeekOfCurrentMonth()
-  timeframe <- timeframe %>% dplyr::filter(cw != as.character(calendarweek-1) & cw != as.character(calendarweek+4))
+  # timeframe <- timeframe %>% dplyr::filter(cw != as.character(calendarweek-1) & cw != as.character(calendarweek+4))
+  timeframe <- timeframe %>% dplyr::filter(cw != last_cw_last_month & cw != first_cw_next_month)
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
   colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
@@ -243,10 +289,11 @@ main <- function(){
     args <- commandArgs(trailingOnly=TRUE)
     # Access the path variable passed from Python
     filepath <- args[1]
-
+    
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 
+    # create a temporary working dir
     if(!dir.exists(exDir)) {
       dir.create(exDir)
       print(paste("Directory", exDir, "created."))
@@ -264,10 +311,11 @@ main <- function(){
       timeframe <- data.frame("no_data" = {"no_data"})
       print("case_data is NULL, check the given table for missing columns.")
     }
+    
+    # save analysis result
     timeframe_path <- paste0(exDir, "/timeframe.csv")
     write.csv(timeframe, timeframe_path, row.names = FALSE)
     print(paste0("timeframe_path:",timeframe_path))
-
 }
 
 main()
