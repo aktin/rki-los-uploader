@@ -16,13 +16,14 @@ conflicts_prefer(dplyr::filter)
 
 # Change Variables before using the script !!!!!!!!!!!! 
 filepath <- '/home/wiliam/Downloads/export_9999.zip'
-
-
+#filepath <- 'C:\\Users\\wiliam\\Downloads\\LOS_resources\\export_9999.zip'
 last_cw_last_month <- 29
 first_cw_next_month <- 34
 
+included_clinics = c(1:3, 8:34,37:44,47:52,55,56, 60, 68,69,70)
+
 max_accepted_error <- 25 # in %, used to exclude data sources with an error rate of i% or higher
-max_accepted_los <- 415 # in min, used to exclude data sources with an mean length of stay of i mins and higher
+max_accepted_los <- 400 # in min, used to exclude data sources with an mean length of stay of i mins and higher
 
 discharge_col_name <- 'entlassung_ts' # name of the discharge column from broker export data
 admittance_col_name <- 'aufnahme_ts' # name of the admittance column from broker export data
@@ -35,7 +36,7 @@ admittance_col_name <- 'aufnahme_ts' # name of the admittance column from broker
 unpackZip <- function(inDir, exDir) {
   tryCatch({
     unzip(inDir, exdir = exDir)
-    print(paste("Data from", inDir, "successfully unpacked in:", exDir))
+    # print(paste("Data from", inDir, "successfully unpacked in:", exDir))
     return(exDir)
   }, error = function(e) {
     warning(paste("An error occurred unpacking the data:", e$message))
@@ -57,7 +58,7 @@ unpackClinicResult <- function(exDir, file_numbers) {
     }
     tryCatch({
       unzip(path_zipped, exdir = path_unzipped)
-      print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
+      #print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
     }, error = function(e) {
       warning(paste("An error occurred unpacking the result sets:", e$message))
     })
@@ -69,13 +70,17 @@ unpackClinicResult <- function(exDir, file_numbers) {
 #' At the end a dataframe with all hospital results is created, identified by the hospital number
 #' @param exDir the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
 #' @param file_numbers hospital numbers in directory name to identify corresponding hospital
-processFiles <- function(exDir, file_numbers) {
+processFiles <- function(exDir, file_numbers, inkludierte_kliniken_von_uns) {
   all_data_df <- data.frame()
   error_rates <- data.frame(clinic=NA, errors=NA) # counts the number of invalid entries for each clinic
 
   for (i in file_numbers) {
+    if (!i %in% included_clinics) {
+      print(sprintf("Klinik %d in Zip ausgeschlossen!", i))
+      next
+    }
     filepath_i <- file.path(exDir, sprintf("%d_result/case_data.txt", i), fsep = "/")
-    print(paste("This is used in processFiles: ", filepath_i))
+    #print(paste("This is used in processFiles: ", filepath_i))
 
     if (file.exists(filepath_i)) {
 
@@ -86,6 +91,7 @@ processFiles <- function(exDir, file_numbers) {
       ) %>% mutate(clinic = i)
 
       if(!discharge_col_name %in% colnames(df)) {
+        print(sprintf("Klinik %d besitzt keine Entlassungsspalte, die mit der Namensgebung in der Konfiguration übereinstimmt!", i))
         next
       }
 
@@ -94,6 +100,7 @@ processFiles <- function(exDir, file_numbers) {
       }
 
       all_data_df <- rbind(all_data_df, df)
+      inkludierte_kliniken_von_uns <- c(inkludierte_kliniken_von_uns, i)
 
     } else {
       print(paste("No file found: ", filepath_i))
@@ -102,6 +109,13 @@ processFiles <- function(exDir, file_numbers) {
   }
 
   if(nrow(all_data_df) > 0) {
+    ronny <- c(1:3, 8:34,37:44,47:52,55,56, 60, 68,69,70)
+    diffRonny <- setdiff(ronny, inkludierte_kliniken_von_uns)
+    diffUns <- setdiff(inkludierte_kliniken_von_uns, ronny)
+    cat("Elements in ronny but not in our:", diffRonny, "\n")
+    cat("Elements in ours but not in Ronny:", diffUns, "\n")
+  
+    
     return(all_data_df)
   } else {
     return(NULL)
@@ -132,12 +146,12 @@ fillCaseData <- function(case_data) {
   case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts, tzone = "Europe/Berlin")
   case_data$entlassung_ts <- with_tz(case_data$entlassung_ts, tzone = "Europe/Berlin")
   case_data$triage_ts <- with_tz(case_data$triage_ts, tzone = "Europe/Berlin")
-
+  
   # extract additional information from datetimes
   case_data$jahr <- year(case_data$aufnahme_ts)
   case_data$cw <- format(case_data$aufnahme_ts, "%V")
   case_data$calendarweek_year <- format(case_data$aufnahme_ts, "%G")
-
+  
   # Use aufnahme_ts as default and reference value
   case_data$first_ts <- as.POSIXct(ifelse(is.na(case_data$aufnahme_ts), case_data$triage_ts, case_data$aufnahme_ts), tz = "Europe/Berlin")
   # if triage is beore aufnahme, use triage_ts in first_ts
@@ -161,7 +175,6 @@ filterCases <- function(case_data) {
   db<-db%>%filter(los >=1)
   db<-db%>%filter(los <1440)
   db$los<-as.numeric(db$los)
-  db2<-db
   return(db)
 }
 
@@ -219,7 +232,6 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getFirstCalendarWeekOfCurrentMonth()
-  # timeframe <- timeframe %>% dplyr::filter(cw != as.character(calendarweek-1) & cw != as.character(calendarweek+4))
   timeframe <- timeframe %>% dplyr::filter(cw != last_cw_last_month & cw != first_cw_next_month)# todo rework, why only last and not second last, why manually. maybe a whitelist approach?
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
@@ -266,7 +278,7 @@ removeTrailingFileFromPath <- function(filepath, regex) {
   index <- max(gregexpr(regex, filepath)[[1]])
   if (index > 1) {
     exDir <- substr(filepath, 1, index - 1)
-    print(exDir)
+    #print(exDir)
     return(exDir)
   } else {
     print(paste("Kein'", regex, "'gefunden."))
@@ -296,14 +308,17 @@ main <- function(filepath){
     unpackZip(filepath, exDir)
 
     file_numbers <- getHospitalNumbers(exDir)
+    inkludierte_kliniken_von_uns <- c()
+    
     unpackClinicResult(exDir, file_numbers)
-    case_data <- processFiles(exDir, file_numbers)
+    case_data <- processFiles(exDir, file_numbers, inkludierte_kliniken_von_uns)
     if(!is.null(case_data)) {
       timeframe <- performAnalysis(case_data)
     } else {
       timeframe <- data.frame("no_data" = {"no_data"})
       print("case_data is NULL, check the given table for missing columns.")
     }
+    
     timeframe_stringified <- timeframe %>% mutate_all(as.character)
     print(timeframe_stringified)
 
