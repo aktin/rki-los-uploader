@@ -15,8 +15,8 @@ conflicts_prefer(mosaic::sum)
 conflicts_prefer(dplyr::filter)
 
 # Change Variables before using the script !!!!!!!!!!!! 
-filepath <- '/home/wiliam/Downloads/export_9999.zip'
-#filepath <- 'C:\\Users\\wiliam\\Downloads\\LOS_resources\\export_9999.zip'
+#filepath <- '/home/wiliam/Downloads/export_9999.zip'
+filepath <- 'C:\\Users\\wilia\\Downloads\\export_9999.zip'
 last_cw_last_month <- 29
 first_cw_next_month <- 34
 
@@ -109,13 +109,9 @@ processFiles <- function(exDir, file_numbers, inkludierte_kliniken_von_uns) {
   }
 
   if(nrow(all_data_df) > 0) {
-    ronny <- c(1:3, 8:34,37:44,47:52,55,56, 60, 68,69,70)
-    diffRonny <- setdiff(ronny, inkludierte_kliniken_von_uns)
-    diffUns <- setdiff(inkludierte_kliniken_von_uns, ronny)
-    cat("Elements in ronny but not in our:", diffRonny, "\n")
-    cat("Elements in ours but not in Ronny:", diffUns, "\n")
-  
-    
+    all_data_df$aufnahme_ts<-with_tz(case_data$aufnahme_ts)
+    all_data_df$triage_ts<-with_tz(case_data$triage_ts)
+    all_data_df$entlassung_ts<-with_tz(case_data$entlassung_ts)
     return(all_data_df)
   } else {
     return(NULL)
@@ -142,20 +138,15 @@ performAnalysis <- function(case_data) {
 #' and length of stay.
 #' @param case_data: a data frame containing emergency department data
 fillCaseData <- function(case_data) {
-  # set dateteimes to same timezone
-  case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts, tzone = "Europe/Berlin")
-  case_data$entlassung_ts <- with_tz(case_data$entlassung_ts, tzone = "Europe/Berlin")
-  case_data$triage_ts <- with_tz(case_data$triage_ts, tzone = "Europe/Berlin")
-  
   # extract additional information from datetimes
   case_data$jahr <- year(case_data$aufnahme_ts)
   case_data$cw <- format(case_data$aufnahme_ts, "%V")
   case_data$calendarweek_year <- format(case_data$aufnahme_ts, "%G")
-  
+
   # Use aufnahme_ts as default and reference value
-  case_data$first_ts <- as.POSIXct(ifelse(is.na(case_data$aufnahme_ts), case_data$triage_ts, case_data$aufnahme_ts), tz = "Europe/Berlin")
+  #case_data$first_ts <- as.POSIXct(ifelse(is.na(case_data$aufnahme_ts), case_data$triage_ts, case_data$aufnahme_ts))
   # if triage is beore aufnahme, use triage_ts in first_ts
-  case_data$first_ts <- as.POSIXct(ifelse(!is.na(case_data$first_ts) & !is.na(case_data$triage_ts) & case_data$first_ts > case_data$triage_ts, case_data$triage_ts, case_data$aufnahme_ts), tz = "UTC")# todo else part is unnecessary, only keep triagets part
+  case_data$first_ts <- as.POSIXct(ifelse(!is.na(case_data$first_ts) & !is.na(case_data$triage_ts) & case_data$first_ts > case_data$triage_ts, case_data$triage_ts, case_data$aufnahme_ts))# todo else part is unnecessary, only keep triagets part
   case_data$los <- difftime(case_data$entlassung_ts, case_data$first_ts, units = "mins")
   return(case_data)
 }
@@ -287,7 +278,7 @@ removeTrailingFileFromPath <- function(filepath, regex) {
 
 tablenameToEng <- function(var) {
   m <- hashmap()
-  m[c("admission_ts", "discharge_ts", 3)] <- c("aufnahme_ts", "entlassung_ts", "c") 
+  m[c("admission_ts", "discharge_ts", 3)] <- c("aufnahme_ts", "entlassung_ts", "c")
   return(m[var])
 }
 
@@ -296,7 +287,7 @@ getHospitalNumbers <- function(path) {
   zip_files <- file_list[grep("\\.zip", file_list)]
   hospital_numbers <- list()
   for(filename in zip_files) {
-     hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
+    hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
   }
   return(hospital_numbers)
 }
@@ -304,25 +295,25 @@ getHospitalNumbers <- function(path) {
 
 main <- function(filepath){
   options(digits=2)
-    exDir <- gsub(".zip", "", filepath)
-    unpackZip(filepath, exDir)
+  exDir <- gsub(".zip", "", filepath)
+  unpackZip(filepath, exDir)
 
-    file_numbers <- getHospitalNumbers(exDir)
-    inkludierte_kliniken_von_uns <- c()
-    
-    unpackClinicResult(exDir, file_numbers)
-    case_data <- processFiles(exDir, file_numbers, inkludierte_kliniken_von_uns)
-    if(!is.null(case_data)) {
-      timeframe <- performAnalysis(case_data)
-    } else {
-      timeframe <- data.frame("no_data" = {"no_data"})
-      print("case_data is NULL, check the given table for missing columns.")
-    }
-    
-    timeframe_stringified <- timeframe %>% mutate_all(as.character)
-    print(timeframe_stringified)
+  file_numbers <- getHospitalNumbers(exDir)
+  inkludierte_kliniken_von_uns <- c()
 
-    unlink(exDir, recursive = TRUE)
+  unpackClinicResult(exDir, file_numbers)
+  case_data <- processFiles(exDir, file_numbers, inkludierte_kliniken_von_uns)
+  if(!is.null(case_data)) {
+    timeframe <- performAnalysis(case_data)
+  } else {
+    timeframe <- data.frame("no_data" = {"no_data"})
+    print("case_data is NULL, check the given table for missing columns.")
+  }
+
+  timeframe_stringified <- timeframe %>% mutate_all(as.character)
+  print(timeframe_stringified)
+
+  #     unlink(exDir, recursive = TRUE)
 }
 
 main(filepath)
