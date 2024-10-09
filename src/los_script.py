@@ -63,7 +63,9 @@ class Manager:
         """
         required_keys = {'BROKER.URL', 'BROKER.API_KEY', 'REQUESTS.TAG', 'SFTP.HOST', 'SFTP.USERNAME',
                          'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR',
-                         'MISC.TEMP_ZIP_DIR', 'RSCRIPT.SCRIPT_PATH'}
+                         'MISC.TEMP_ZIP_DIR', 'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.START_CW', 'RSCRIPT.END_CW',
+                         'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX', 'RSCRIPT.COLNAME_DISCHARGE',
+                         'RSCRIPT.COLNAME_ADMITTANCE', 'RSCRIPT.COLNAME_TRIAGE'}
         if not os.path.isfile(path_toml):
             raise SystemExit('invalid TOML file path')
         with open(path_toml, encoding='utf-8') as file:
@@ -263,17 +265,28 @@ class LosScriptManager:
         self.__sftp_manager = SftpFileManager()
         self._r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
         self.__temp_result_path = os.environ['MISC.TEMP_ZIP_DIR']
+        self._start_cw = os.environ['RSCRIPT.START_CW']
+        self._end_cw = os.environ['RSCRIPT.END_CW']
+        self._los_max = os.environ['RSCRIPT.LOS_MAX']
+        self._error_max = os.environ['RSCRIPT.ERROR_MAX']
+        self._colname_discharge = os.environ['RSCRIPT.COLNAME_DISCHARGE']
+        self._colname_admittance = os.environ['RSCRIPT.COLNAME_ADMITTANCE']
+        self._colname_triage = os.environ['RSCRIPT.COLNAME_TRIAGE']
+
 
     def main(self) -> None:
         dir_manager = DirectoryManager()
         dir_manager.create_temp_directory()
         zip_file_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
         r_result_path = self.execute_given_rscript(zip_file_path)
-        self.clean_and_upload_to_sftp_server(r_result_path)
+        self.update_sftp_server(r_result_path)
         dir_manager.cleanup()
 
     def execute_given_rscript(self, zip_file_path: str):
-        output = subprocess.check_output(['Rscript', self._r_script_path, zip_file_path])
+        output = subprocess.check_output(['Rscript', self._r_script_path,
+                                          zip_file_path, self._start_cw, self._end_cw,
+                                          self._los_max, self._error_max,
+                                          self._colname_discharge, self._colname_admittance, self._colname_triage])
         logging.info("R Script finished successfully")
         # Decode the output to string if necessary
         output_string = output.decode("utf-8")
@@ -282,7 +295,7 @@ class LosScriptManager:
         result_path = result_path.replace('\"', '')
         return result_path
 
-    def clean_and_upload_to_sftp_server(self, r_result_path) -> None:
+    def update_sftp_server(self, r_result_path) -> None:
         sftp_manager = self.__sftp_manager
         sftp_files = sftp_manager.list_files()
         for sftp_file in sftp_files:

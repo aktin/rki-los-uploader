@@ -12,15 +12,7 @@ for (package_name in required_packages) {
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
 conflicts_prefer(mosaic::sum)
-
-last_cw_last_month <- 29
-first_cw_next_month <- 34
-
-max_accepted_error <- 25 # in %, used to exclude data sources with an error rate of i% or higher
-max_accepted_los <- 415 # in min, used to exclude data sources with an mean length of stay of i mins and higher
-
-discharge_col_name <- 'entlassung_ts' # name of the discharge column from broker export data
-admittance_col_name <- 'aufnahme_ts' # name of the admittance column from broker export data
+conflicts_prefer(dplyr::filter)
 
 
 #' Unpacks a zip file from the specified input directory to the specified extraction directory.
@@ -30,7 +22,7 @@ admittance_col_name <- 'aufnahme_ts' # name of the admittance column from broker
 unpackZip <- function(inDir, exDir) {
   tryCatch({
     unzip(inDir, exdir = exDir)
-    print(paste("Data from", inDir, "successfully unpacked in:", exDir))
+    # print(paste("Data from", inDir, "successfully unpacked in:", exDir))
     return(exDir)
   }, error = function(e) {
     warning(paste("An error occurred unpacking the data:", e$message))
@@ -38,9 +30,9 @@ unpackZip <- function(inDir, exDir) {
   })
 }
 
-#' This function receives the directory of the unzipped broker result. Each 
-#' result zip in this directory will also be unzipped. Each result zip contains 
-#' a number of the originating clinic. 
+#' This function receives the directory of the unzipped broker result. Each
+#' result zip in this directory will also be unzipped. Each result zip contains
+#' a number of the originating clinic.
 #' @param exDir: the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
 #' @param file_numbers: result IDs in exDir
 unpackClinicResult <- function(exDir, file_numbers) {
@@ -52,14 +44,14 @@ unpackClinicResult <- function(exDir, file_numbers) {
     }
     tryCatch({
       unzip(path_zipped, exdir = path_unzipped)
-      print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
+      #print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
     }, error = function(e) {
       warning(paste("An error occurred unpacking the result sets:", e$message))
     })
   }
 }
 
-#' This function uses the unpacked zip archives from the broker results that 
+#' This function uses the unpacked zip archives from the broker results that
 #' contain result sets for each hospital. It adds the hospital number as a new column.
 #' At the end a dataframe with all hospital results is created, identified by the hospital number
 #' @param exDir the filepath to the unpacked broker result zip that contains the zip archives of all hospitals
@@ -67,47 +59,54 @@ unpackClinicResult <- function(exDir, file_numbers) {
 processFiles <- function(exDir, file_numbers) {
   all_data_df <- data.frame()
   error_rates <- data.frame(clinic=NA, errors=NA) # counts the number of invalid entries for each clinic
-  
+
   for (i in file_numbers) {
     filepath_i <- file.path(exDir, sprintf("%d_result/case_data.txt", i), fsep = "/")
-    print(paste("This is used in processFiles: ", filepath_i))
-    
+
     if (file.exists(filepath_i)) {
-      
+
       df <- read_delim(
         filepath_i,
         delim = "\t", escape_double = FALSE,
+        col_types = cols(aufnahme_ts = col_datetime(), entlassung_ts = col_datetime(), triage_ts = col_datetime()),
         trim_ws = TRUE
       ) %>% mutate(clinic = i)
-      
+
       if(!discharge_col_name %in% colnames(df)) {
+        print(sprintf("Klinik %d besitzt keine Entlassungsspalte, die mit der Namensgebung in der Konfiguration übereinstimmt!", i))
         next
-      } 
-      
+      }
+
       if(!admittance_col_name %in% colnames(df)) {
         df$aufnahme_ts <- NA
       }
-      
+
+      if(!triage_col_name %in% colnames(df)) {
+        df$triage_ts <- NA
+      }
+
+      # Remove all rows where triage and aufnahme (admittance) is NA
+      df <- df[!(is.na(df$triage_ts) & is.na(df$aufnahme_ts)), ]
       all_data_df <- rbind(all_data_df, df)
-      
     } else {
       print(paste("No file found: ", filepath_i))
       NULL
     }
   }
-  
+
   if(nrow(all_data_df) > 0) {
-    return(all_data_df)  
+    return(all_data_df)
   } else {
     return(NULL)
   }
-  
+
 }
 
 #' This method calculates length of stay, analyses them and calculates a summary
 #' @param case_data: A data frame containing case data of all clinics
 #' @return A data frame representing the results of the length of stay analysis.
 performAnalysis <- function(case_data) {
+  options(digits = 10)
   filledCaseData <- fillCaseData(case_data)
   num_of_cases <- countClinics(filledCaseData)
   db <- filterCases(filledCaseData)
@@ -118,26 +117,29 @@ performAnalysis <- function(case_data) {
   return(timeframe)
 }
 
-#' This method receives a data frame and put all datetime entries to the same 
-#' default timezone. It generates additional data from them like calendar week 
+#' This method receives a data frame and put all datetime entries to the same
+#' default timezone. It generates additional data from them like calendar week
 #' and length of stay.
 #' @param case_data: a data frame containing emergency department data
 fillCaseData <- function(case_data) {
-  # set dateteimes to same timezone
-  case_data$aufnahme_ts <- with_tz(case_data$aufnahme_ts)
-  case_data$entlassung_ts <- with_tz(case_data$entlassung_ts)
-  case_data$triage_ts <- with_tz(case_data$triage_ts)
-  
+  case_data$aufnahme_ts<-with_tz(case_data$aufnahme_ts)
+  case_data$triage_ts<-with_tz(case_data$triage_ts)
+  case_data$entlassung_ts<-with_tz(case_data$entlassung_ts)
+
   # extract additional information from datetimes
   case_data$jahr <- year(case_data$aufnahme_ts)
   case_data$cw <- format(case_data$aufnahme_ts, "%V")
   case_data$calendarweek_year <- format(case_data$aufnahme_ts, "%G")
-  
-  # Use aufnahme_ts as default and reference value
-  case_data$first_ts <- as.POSIXct(ifelse(is.na(case_data$aufnahme_ts), case_data$triage_ts, case_data$aufnahme_ts), tz = "UTC")
-  # if triage is beore aufnahme, use triage_ts in first_ts
-  case_data$first_ts <- as.POSIXct(ifelse(!is.na(case_data$first_ts) & !is.na(case_data$triage_ts) & case_data$first_ts > case_data$triage_ts, case_data$triage_ts, case_data$aufnahme_ts), tz = "UTC")# todo else part is unnecessary, only keep triagets part
-  case_data$los <- difftime(case_data$entlassung_ts, case_data$first_ts, units = "mins")
+
+  # We assume that while generating case_data, all rows witout either aufnahme_ts and triage_ts have been excluded
+  case_data <- case_data %>%
+    mutate(first_ts = case_when(
+      is.na(triage_ts) | triage_ts >= aufnahme_ts ~ aufnahme_ts,
+      TRUE ~ triage_ts
+    ))
+
+  # if triage is before aufnahme, use triage_ts in first_ts
+  case_data$los<-as.numeric(difftime(case_data$entlassung_ts,case_data$first_ts,units = c("mins")))
   return(case_data)
 }
 
@@ -151,12 +153,10 @@ countClinics <- function(case_data) {
 
 #' This method receives a data frame and filters entries after the los column
 #' @param case_data: a table of case data with length of stay already calculated
-filterCases <- function(case_data) {
-  db<-case_data%>%filter(is.na(los)==FALSE)
+filterCases <- function(filledCaseData) {
+  db<-filledCaseData%>%filter(los!="NA")
   db<-db%>%filter(los >=1)
-  db<-db%>%filter(los <1440)
-  db$los<-as.numeric(db$los)
-  db2<-db
+  db<-db%>%filter(los < 1440.0)
   return(db)
 }
 
@@ -165,7 +165,7 @@ filterCases <- function(case_data) {
 #' @return A data frame representing the summary statistics of length of stay (LOS) data grouped by clinic.
 summariseLos <- function(db) {
   result <- data.frame(favstats(db$los ~ db$clinic))
-  names(result)[1] <- "clinic"  
+  names(result)[1] <- "clinic"
   return(result)
 }
 
@@ -174,7 +174,7 @@ summariseLos <- function(db) {
 #' @return A data frame representing the summary statistics of length of stay (LOS) data grouped by clinic.
 filterLos <- function(db) {
   result <- data.frame(favstats(db$los ~ db$clinic))
-  names(result)[1] <- "clinic"  
+  names(result)[1] <- "clinic"
   return(result)
 }
 
@@ -198,7 +198,7 @@ filterLosValid <- function(los, num_of_cases) {
 
 joinClinics <- function(db, los_valid) {
   complete_db_Pand <- left_join(los_valid, db)
-  complete_db_Pand <- complete_db_Pand %>% dplyr::filter(clinic != 33)
+  complete_db_Pand <- complete_db_Pand %>% dplyr::filter(clinic != 46)
   return(complete_db_Pand)
 }
 
@@ -206,7 +206,7 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
   timeframe <- complete_db_Pand %>%
     group_by(calendarweek_year, cw) %>%
-    summarise(weighted_los = mean(los))
+    summarise(weighted_los = weighted.mean(los,clinic))
   case_num <- calculateCaseNumber(complete_db_Pand)
   timeframe  <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
@@ -214,8 +214,7 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
   calendarweek <- getFirstCalendarWeekOfCurrentMonth()
-  # timeframe <- timeframe %>% dplyr::filter(cw != as.character(calendarweek-1) & cw != as.character(calendarweek+4))
-  timeframe <- timeframe %>% dplyr::filter(cw != last_cw_last_month & cw != first_cw_next_month)
+  timeframe <- timeframe %>% dplyr::filter(last_cw_last_month < cw & cw < first_cw_next_month)# todo rework, why only last and not second last, why manually. maybe a whitelist approach?
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
   colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
@@ -261,7 +260,7 @@ removeTrailingFileFromPath <- function(filepath, regex) {
   index <- max(gregexpr(regex, filepath)[[1]])
   if (index > 1) {
     exDir <- substr(filepath, 1, index - 1)
-    print(exDir)
+    #print(exDir)
     return(exDir)
   } else {
     print(paste("Kein'", regex, "'gefunden."))
@@ -279,16 +278,25 @@ getHospitalNumbers <- function(path) {
   zip_files <- file_list[grep("\\.zip", file_list)]
   hospital_numbers <- list()
   for(filename in zip_files) {
-     hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
+    hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
   }
   return(hospital_numbers)
-} 
+}
 
 
 main <- function(){
     args <- commandArgs(trailingOnly=TRUE)
     # Access the path variable passed from Python
     filepath <- args[1]
+    last_cw_last_month <- args[2]
+    first_cw_next_month <- args[3]
+
+    max_accepted_los <- args[4] # in min, used to exclude data sources with an mean length of stay of i mins and higher
+    max_accepted_error <- args[5] # in %, used to exclude data sources with an error rate of i% or higher
+
+    discharge_col_name <- args[6] # name of the discharge column from broker export data
+    admittance_col_name <- args[7] # name of the admittance column from broker export data
+    triage_col_name <- args[8]
     
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
@@ -308,8 +316,8 @@ main <- function(){
     if(!is.null(case_data)) {
       timeframe <- performAnalysis(case_data)
     } else {
-      timeframe <- data.frame("no_data" = {"no_data"})
-      print("case_data is NULL, check the given table for missing columns.")
+      timeframe <- data.frame("Error" = {"No Data found in case_data files!"})
+    print("case_data is NULL, check the given table for missing columns.")
     }
     
     # save analysis result
