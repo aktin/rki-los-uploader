@@ -1,9 +1,0 @@
-Pandemieradar
-
--Export highest weg (X)
--Class weg (X)
--out dir wie input nur "datei.zip" cutten. (X)
--In englisch alles (X)
--test_data.txt in Zeile 45. NUR case_data.txt (X)
--datei die gespeichert wird anpassen (Name) (X)
--doku
