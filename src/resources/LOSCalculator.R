@@ -280,16 +280,19 @@ getHospitalNumbers <- function(path) {
   return(hospital_numbers)
 }
 
+last_cw_last_month <- NULL
+first_cw_next_month <- NULL
+max_accepted_los <- NULL
+max_accepted_error <- NULL
 
 main <- function(){
     args <- commandArgs(trailingOnly=TRUE)
     # Access the path variable passed from Python
     filepath <- args[1]
-    last_cw_last_month <- args[2]
-    first_cw_next_month <- args[3]
-    max_accepted_los <- args[4] # in min, used to exclude data sources with an mean length of stay of i mins and higher
-    max_accepted_error <- args[5] # in %, used to exclude data sources with an error rate of i% or higher
-
+    assign("last_cw_last_month", args[2], envir = .GlobalEnv)
+    assign("first_cw_next_month", args[3], envir = .GlobalEnv)
+    assign("max_accepted_los", as.numeric(args[4]), envir = .GlobalEnv) # in min, used to exclude data sources with an mean length of stay of i mins and higher
+    assign("max_accepted_error", as.numeric(args[5]), envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 

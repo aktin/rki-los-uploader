@@ -32,10 +32,21 @@ class TestLosScriptManager:
     self.los_manager = LosScriptManager()
     self.test_resources_path = os.path.join(Path(__file__).parent.parent, 'resources')
     self.test_zip_path = os.path.join(self.test_resources_path, 'test.zip')
-    # Clean test files after each test
+    # Clean test files before test starts
+    self.cleanup_test_files()
     yield
+    # Clean test files after test completes or fails
+    self.cleanup_test_files()
+
+  def cleanup_test_files(self):
+    """
+    Removes test.zip and broker_result directory if they exist
+    """
     if os.path.exists(self.test_zip_path):
       os.remove(self.test_zip_path)
+    broker_result = os.path.join(self.test_resources_path, 'broker_result')
+    if os.path.exists(broker_result):
+      shutil.rmtree(broker_result)
 
   def test_single_clinic(self):
     test_data = ["aufnahme_ts\tentlassung_ts\ttriage_ts\ta_encounter_num\ta_encounter_ide\ta_billing_ide\n"

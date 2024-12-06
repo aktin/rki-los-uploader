@@ -240,10 +240,10 @@ class LosScriptManager:
         """
         Executes R script with provided zip file and calendar weeks, returns path to results.
         """
-        logging.info("Preparing rscript execution")
-        output = subprocess.run(['Rscript', self.__rscript_path, zip_file_path,
-                                 start_cw, end_cw, self.__los_max, self.__error_max],
-                                capture_output=True, text=True)
+        cmd = ['Rscript', self.__rscript_path, zip_file_path,
+               start_cw, end_cw, self.__los_max, self.__error_max]
+        logging.info(f"Running command: {' '.join(cmd)}")
+        output = subprocess.run(cmd, capture_output=True, text=True)
         if output.returncode != 0:
             raise RuntimeError(f"R script failed: {output.stderr}")
         logging.info("Rscript finished successfully")
