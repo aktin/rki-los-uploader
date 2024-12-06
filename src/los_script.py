@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on 22.03.2024
-@AUTHOR: Wiliam Hoy (whoy@ukaachen.de)
-@VERSION=1.0
+@AUTHOR: Wiliam Hoy (whoy@ukaachen.de), Alexander Kombeiz (akombeiz@ukaachen.de)
+@VERSION=1.1
 """
 
 #
@@ -73,7 +73,7 @@ class ConfigurationManager:
         with open(path, encoding='utf-8') as file:
             return toml.load(file)
 
-    def __flatten_dict(self, d, parent_key='', sep='.'):
+    def __flatten_dict(self, d, parent_key='', sep='.') -> dict:
         items = []
         for k, v in d.items():
             new_key = f'{parent_key}{sep}{k}' if parent_key else k
@@ -106,8 +106,9 @@ class SftpFileManager:
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.__sftp_host, username=self.__sftp_username, password=self.__sftp_password,
-                    timeout=self.__sftp_timeout)
+        ssh.connect(self.__sftp_host, username=self.__sftp_username,
+                    password=self.__sftp_password, timeout=self.__sftp_timeout,
+                    allow_agent=False, look_for_keys=False)
         return ssh.open_sftp()
 
     def upload_file(self, path_file: str):
@@ -118,7 +119,7 @@ class SftpFileManager:
         filename = os.path.basename(path_file)
         self.__connection.put(path_file, f"{self.__sftp_foldername}/{filename}")
 
-    def list_files(self):
+    def list_files(self) -> list:
         """
         List all files in the SFTP server's specified folder.
         """
