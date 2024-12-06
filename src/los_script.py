@@ -30,7 +30,6 @@ import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
-from datetime import datetime
 
 import paramiko
 import requests
