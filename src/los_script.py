@@ -46,9 +46,7 @@ class ConfigurationManager:
         'BROKER.URL', 'BROKER.API_KEY',
         'REQUESTS.TAG',
         'SFTP.HOST', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
-        'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.START_CW', 'RSCRIPT.END_CW', 'RSCRIPT.LOS_MAX',
-        'RSCRIPT.ERROR_MAX', 'RSCRIPT.COLNAME_DISCHARGE', 'RSCRIPT.COLNAME_ADMITTANCE',
-        'RSCRIPT.COLNAME_TRIAGE'
+        'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
     }
 
     def __init__(self, path_toml: str):
@@ -59,6 +57,7 @@ class ConfigurationManager:
         This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
         and sets the environment variables based on the loaded configuration.
         """
+        logging.info('Loading %s as environment vars' % path_toml)
         self.__verify_file_exists(path_toml)
         config = self.__load_toml_file(path_toml)
         flattened_config = self.__flatten_dict(config)
@@ -123,7 +122,7 @@ class SftpFileManager:
         """
         List all files in the SFTP server's specified folder.
         """
-        logging.info('Listing files on sftp server')
+        logging.info('Listing files from sftp server')
         files = self.__connection.listdir(f"{self.__sftp_foldername}")
         return files
 
@@ -234,34 +233,18 @@ class LosScriptManager:
     flow, executes the rscript and clears a directory in wich temporary files are stored.
     """
 
-    def __init__(self, path_toml: str):
-        self.__manager = Manager(path_toml)
-        self.__broker_manager = BrokerRequestResultManager()
-        self.__sftp_manager = SftpFileManager()
-        self._r_script_path = os.environ['RSCRIPT.SCRIPT_PATH']
+    def __init__(self):
+        self.__rscript_path = os.environ['RSCRIPT.SCRIPT_PATH']
         self.__temp_result_path = os.environ['MISC.TEMP_ZIP_DIR']
         self._start_cw = os.environ['RSCRIPT.START_CW']
         self._end_cw = os.environ['RSCRIPT.END_CW']
         self._los_max = os.environ['RSCRIPT.LOS_MAX']
         self._error_max = os.environ['RSCRIPT.ERROR_MAX']
-        self._colname_discharge = os.environ['RSCRIPT.COLNAME_DISCHARGE']
-        self._colname_admittance = os.environ['RSCRIPT.COLNAME_ADMITTANCE']
-        self._colname_triage = os.environ['RSCRIPT.COLNAME_TRIAGE']
-
-
-    def main(self) -> None:
-        dir_manager = DirectoryManager()
-        dir_manager.create_temp_directory()
-        zip_file_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
-        r_result_path = self.execute_given_rscript(zip_file_path)
-        self.update_sftp_server(r_result_path)
-        dir_manager.cleanup()
 
     def execute_given_rscript(self, zip_file_path: str):
-        output = subprocess.check_output(['Rscript', self._r_script_path,
+        output = subprocess.check_output(['Rscript', self.__rscript_path,
                                           zip_file_path, self._start_cw, self._end_cw,
-                                          self._los_max, self._error_max,
-                                          self._colname_discharge, self._colname_admittance, self._colname_triage])
+                                          self._los_max, self._error_max])
         logging.info("R Script finished successfully")
         # Decode the output to string if necessary
         output_string = output.decode("utf-8")

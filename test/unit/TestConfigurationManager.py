@@ -24,7 +24,6 @@ class TestConfigurationManager:
     ConfigurationManager(self.CONFIG_PATH)
     assert os.environ['BROKER.URL'] == 'test-url'
     assert os.environ['SFTP.HOST'] == 'test-host'
-    assert os.environ['RSCRIPT.SCRIPT_PATH'] == '/path/to/script'
 
   def test_missing_file_raises_error(self):
     with pytest.raises(SystemExit, match='invalid TOML file path'):

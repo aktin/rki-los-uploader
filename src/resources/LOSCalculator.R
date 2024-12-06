@@ -1,13 +1,11 @@
-#### BMG Pandemieradar NEU ####
-required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
-
-# install all required packages
-for (package_name in required_packages) {
-  if (!require(package_name, character.only = TRUE)){
-    install.packages(package_name)
-    library(package_name, character.only = TRUE)
-  } 
-}
+library(conflicted)
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(mosaic)
+library(ISOweek)
+library(r2r)
 
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
@@ -72,16 +70,16 @@ processFiles <- function(exDir, file_numbers) {
         trim_ws = TRUE
       ) %>% mutate(clinic = i)
 
-      if(!discharge_col_name %in% colnames(df)) {
+      if(!"entlassung_ts" %in% colnames(df)) {
         print(sprintf("Klinik %d besitzt keine Entlassungsspalte, die mit der Namensgebung in der Konfiguration übereinstimmt!", i))
         next
       }
 
-      if(!admittance_col_name %in% colnames(df)) {
+      if(!"aufnahme_ts" %in% colnames(df)) {
         df$aufnahme_ts <- NA
       }
 
-      if(!triage_col_name %in% colnames(df)) {
+      if(!"triage_ts" %in% colnames(df)) {
         df$triage_ts <- NA
       }
 
@@ -260,7 +258,6 @@ removeTrailingFileFromPath <- function(filepath, regex) {
   index <- max(gregexpr(regex, filepath)[[1]])
   if (index > 1) {
     exDir <- substr(filepath, 1, index - 1)
-    #print(exDir)
     return(exDir)
   } else {
     print(paste("Kein'", regex, "'gefunden."))
@@ -290,14 +287,9 @@ main <- function(){
     filepath <- args[1]
     last_cw_last_month <- args[2]
     first_cw_next_month <- args[3]
-
     max_accepted_los <- args[4] # in min, used to exclude data sources with an mean length of stay of i mins and higher
     max_accepted_error <- args[5] # in %, used to exclude data sources with an error rate of i% or higher
 
-    discharge_col_name <- args[6] # name of the discharge column from broker export data
-    admittance_col_name <- args[7] # name of the admittance column from broker export data
-    triage_col_name <- args[8]
-    
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 
