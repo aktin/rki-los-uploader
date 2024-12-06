@@ -6,7 +6,7 @@ Created on 22.03.2024
 """
 
 #
-#      Copyright (c) 2024 Wiliam Hoy
+#      Copyright (c) 2024 AKTIN
 #
 #      This program is free software: you can redistribute it and/or modify
 #      it under the terms of the GNU Affero General Public License as
@@ -46,7 +46,6 @@ class ConfigurationManager:
         'BROKER.URL', 'BROKER.API_KEY',
         'REQUESTS.TAG',
         'SFTP.HOST', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
-        'MISC.WORKING_DIR', 'MISC.TEMP_ZIP_DIR',
         'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.START_CW', 'RSCRIPT.END_CW', 'RSCRIPT.LOS_MAX',
         'RSCRIPT.ERROR_MAX', 'RSCRIPT.COLNAME_DISCHARGE', 'RSCRIPT.COLNAME_ADMITTANCE',
         'RSCRIPT.COLNAME_TRIAGE'
@@ -90,6 +89,7 @@ class ConfigurationManager:
             raise SystemExit(f'following keys are missing in config file: {missing_keys}')
         for key in loaded_keys:
             os.environ[key] = config[key]
+
 
 class SftpFileManager:
     """
@@ -144,9 +144,7 @@ class BrokerRequestResultManager:
     def __init__(self):
         self.__broker_url = os.environ['BROKER.URL']
         self.__admin_api_key = os.environ['BROKER.API_KEY']
-        self.__tag_requests = os.environ['REQUESTS.TAG']
-        self.__working_dir = os.environ['MISC.WORKING_DIR']
-        self.__temp_dir = os.environ['MISC.TEMP_ZIP_DIR']
+        self.__requests_tag = os.environ['REQUESTS.TAG']
         self.__check_broker_server_availability()
 
     def __check_broker_server_availability(self):
@@ -171,8 +169,8 @@ class BrokerRequestResultManager:
         """
         HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
         """
-        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]), 'Connection': 'keep-alive',
-                'Accept': mediatype}
+        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]),
+                'Connection': 'keep-alive', 'Accept': mediatype}
 
     def download_latest_broker_result_by_set_tag(self) -> str:
         """
@@ -180,59 +178,54 @@ class BrokerRequestResultManager:
         :return: path to the resulting zip archive
         """
         id_request = self.__get_id_of_latest_request_by_set_tag()
+        id_request = str(id_request)
         uuid = self.__export_request_result(id_request)
-        logging.info('Downloading results of %s', id_request)
         result_stream = self.__download_exported_result(uuid)
-        logging.info('Download finished!')
-        zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request)
+        zip_file_path = self.__store_broker_response_as_zip(result_stream)
+        logging.info('Download finished')
         return zip_file_path
+
+    def __get_id_of_latest_request_by_set_tag(self) -> int:
+      """
+      Asks the broker for the highest request id of a set tag. Highest ID = latest entry
+      """
+      logging.info('Checking for requests with tag %s', self.__requests_tag)
+      url = self.__append_to_broker_url('broker', 'request', 'filtered')
+      url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
+      response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+      response.raise_for_status()
+      list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
+      if len(list_request_id) < 1:
+          raise ValueError("No requests with tag: %s were found!" % self.__requests_tag)
+      logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
+      return max(list_request_id)
 
     def __export_request_result(self, id_request: str) -> str:
         """
-        Returns a UUID from response from AKTIN
+        Tells the broker to aggregate to results of a request to a temporarily downloadable file
         """
+        logging.info('Exporting results of %s', id_request)
         url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
         response = requests.post(url, headers=self.__create_basic_header('text/plain'), timeout=self.__timeout)
         response.raise_for_status()
-        uuid = response.text
-        return uuid
+        return response.text
 
     def __download_exported_result(self, uuid: str) -> Response:
-        """
-        Download the exported request results as a ZIP file inside the folder WORKING_DIR.
-        Returns the path to the downloaded ZIP file.
-        """
+        logging.info('Downloading results of %s', uuid)
         url = self.__append_to_broker_url('broker', 'download', uuid)
-        broker_result_stream = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-        broker_result_stream.raise_for_status()
-        return broker_result_stream
-
-    def __store_broker_response_as_zip(self, broker_result_stream, id_request: str):
-        """
-        Takes a stream containing a broker result and extracts it to a zip archive in the specified temporary
-        directory self.__temp_dir
-        """
-        # id request als input raus und name aus dem header nehmen
-        zip_file_path = os.path.join(self.__temp_dir, f'{id_request}_result.zip')  # suche id in stream
-        with open(zip_file_path, 'wb') as zip_file:
-            zip_file.write(broker_result_stream.content)
-        return zip_file_path
-
-    def __get_id_of_latest_request_by_set_tag(self):
-        """
-        Requests the highest ID for a set tag from AKTIN Broker. Highest ID = latest entry
-        :return: id of the last result
-        """
-        url = self.__append_to_broker_url('broker', 'request', 'filtered')
-        url = '?'.join([url, urllib.parse.urlencode(
-            {'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__tag_requests})])
         response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
         response.raise_for_status()
+        return response
 
-        list_request_id = [element.get('id') for element in et.fromstring(response.content)]
-        if len(list_request_id) < 1:
-            raise Exception(f"no element with tag:\"{self.__tag_requests}\" was found!")
-        return max(list_request_id)
+    def __store_broker_response_as_zip(self, response: Response) -> str:
+        """
+        Extracts broker response results into a zip archive in script directory
+        """
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        zip_file_path = os.path.join(script_dir, 'result.zip')
+        with open(zip_file_path, 'wb') as zip_file:
+            zip_file.write(response.content)
+        return zip_file_path
 
 
 class DirectoryManager:
