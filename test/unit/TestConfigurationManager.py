@@ -16,12 +16,11 @@ from src.los_script import ConfigurationManager
 
 
 class TestConfigurationManager:
-
-  CONFIG_PATH = os.path.join(Path(__file__).parent.parent, 'resources', 'test.toml')
-  INVALID_PATH = os.path.join(Path(__file__).parent.parent, 'resources', 'invalid.toml')
+  config_path = os.path.join(Path(__file__).parent.parent, 'resources', 'test.toml')
+  invalid_path = os.path.join(Path(__file__).parent.parent, 'resources', 'invalid.toml')
 
   def test_valid_config_loads_successfully(self):
-    ConfigurationManager(self.CONFIG_PATH)
+    ConfigurationManager(self.config_path)
     assert os.environ['BROKER.URL'] == 'test-url'
     assert os.environ['SFTP.HOST'] == 'test-host'
 
@@ -31,11 +30,13 @@ class TestConfigurationManager:
 
   def test_missing_required_keys_raises_error(self):
     with pytest.raises(SystemExit, match='following keys are missing'):
-      ConfigurationManager(self.INVALID_PATH)
+      ConfigurationManager(self.invalid_path)
 
   @pytest.fixture(autouse=True)
   def cleanup_env(self):
-    """Clean up environment variables after each test"""
+    """
+    Clean up environment variables after each test
+    """
     yield
     keys_to_remove = [
       key for key in os.environ.keys()
