@@ -1,0 +1,3 @@
+[BROKER]
+URL = "test-url"
+API_KEY = "test-key"

@@ -38,13 +38,40 @@ import toml
 from requests import Response
 
 
-class Manager:
+class ConfigurationManager:
     """
-    A manager class that coordinates the uploading of tagged results to an SFTP server.
+    Handles loading and validating TOML configuration files into environment variables.
     """
+    __required_keys = {
+        'BROKER.URL', 'BROKER.API_KEY',
+        'REQUESTS.TAG',
+        'SFTP.HOST', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
+        'MISC.WORKING_DIR', 'MISC.TEMP_ZIP_DIR',
+        'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.START_CW', 'RSCRIPT.END_CW', 'RSCRIPT.LOS_MAX',
+        'RSCRIPT.ERROR_MAX', 'RSCRIPT.COLNAME_DISCHARGE', 'RSCRIPT.COLNAME_ADMITTANCE',
+        'RSCRIPT.COLNAME_TRIAGE'
+    }
 
     def __init__(self, path_toml: str):
         self.__verify_and_load_toml(path_toml)
+
+    def __verify_and_load_toml(self, path_toml: str):
+        """
+        This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
+        and sets the environment variables based on the loaded configuration.
+        """
+        self.__verify_file_exists(path_toml)
+        config = self.__load_toml_file(path_toml)
+        flattened_config = self.__flatten_dict(config)
+        self.__validate_and_set_env_vars(flattened_config)
+
+    def __verify_file_exists(self, path: str):
+        if not os.path.isfile(path):
+            raise SystemExit('invalid TOML file path')
+
+    def __load_toml_file(self, path: str) -> dict:
+        with open(path, encoding='utf-8') as file:
+            return toml.load(file)
 
     def __flatten_dict(self, d, parent_key='', sep='.'):
         items = []
@@ -56,29 +83,13 @@ class Manager:
                 items.append((new_key, v))
         return dict(items)
 
-    def __verify_and_load_toml(self, path_toml: str):
-        """
-        This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
-        and sets the environment variables based on the loaded configuration.
-        """
-        required_keys = {'BROKER.URL', 'BROKER.API_KEY', 'REQUESTS.TAG', 'SFTP.HOST', 'SFTP.USERNAME',
-                         'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME', 'MISC.WORKING_DIR',
-                         'MISC.TEMP_ZIP_DIR', 'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.START_CW', 'RSCRIPT.END_CW',
-                         'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX', 'RSCRIPT.COLNAME_DISCHARGE',
-                         'RSCRIPT.COLNAME_ADMITTANCE', 'RSCRIPT.COLNAME_TRIAGE'}
-        if not os.path.isfile(path_toml):
-            raise SystemExit('invalid TOML file path')
-        with open(path_toml, encoding='utf-8') as file:
-            dict_config = toml.load(file)
-        flattened_config = self.__flatten_dict(dict_config)
-        loaded_keys = set(flattened_config.keys())
-        if required_keys.issubset(loaded_keys):
-            for key in loaded_keys:
-                os.environ[key] = flattened_config.get(key)
-        else:
-            missing_keys = required_keys - loaded_keys
+    def __validate_and_set_env_vars(self, config: dict):
+        loaded_keys = set(config.keys())
+        missing_keys = self.__required_keys - loaded_keys
+        if missing_keys:
             raise SystemExit(f'following keys are missing in config file: {missing_keys}')
-
+        for key in loaded_keys:
+            os.environ[key] = config[key]
 
 class SftpFileManager:
     """
