@@ -228,36 +228,6 @@ class BrokerRequestResultManager:
         return zip_file_path
 
 
-class DirectoryManager:
-
-    def __init__(self):
-        """
-        :param test_directory: True if this class is used in a testing environment and needs to store the files in this environment
-        """
-        self._temp_work_path = os.environ['MISC.TEMP_ZIP_DIR']
-        self._broker_result_directory = self._temp_work_path+"/broker_result"
-
-    def create_temp_directory(self):
-        if not os.path.exists(self._temp_work_path):
-            os.makedirs(self._temp_work_path)
-        if not os.path.exists(self._broker_result_directory):
-            os.makedirs(self._broker_result_directory)
-
-    def get_temp_directory(self):
-        return self._temp_work_path
-
-    def get_broker_result_directory(self):
-        return self._broker_result_directory
-
-    def cleanup(self):
-        try:
-            # Use shutil.rmtree to remove all files and subdirectories within the directory
-            shutil.rmtree(self._temp_work_path)
-            logging.info(f"Contents of '{self._temp_work_path}' have been deleted.")
-        except Exception as e:
-            logging.error(e)
-
-
 class LosScriptManager:
     """
     This class manages helper methods for managing the execution and flow of the Rscript. It starts the main method
