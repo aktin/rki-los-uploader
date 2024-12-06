@@ -12,16 +12,9 @@ PASSWORD = "test-pass"
 TIMEOUT = "30"
 FOLDERNAME = "test-folder"
 
-[MISC]
-WORKING_DIR = "/tmp/work"
-TEMP_ZIP_DIR = "/tmp/zip"
-
 [RSCRIPT]
 SCRIPT_PATH = "/path/to/script"
 START_CW = "1"
 END_CW = "52"
 LOS_MAX = "30"
 ERROR_MAX = "0.05"
-COLNAME_DISCHARGE = "discharge"
-COLNAME_ADMITTANCE = "admittance"
-COLNAME_TRIAGE = "triage"

@@ -30,7 +30,7 @@ import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
-import shutil
+from datetime import datetime
 
 import paramiko
 import requests
@@ -229,36 +229,37 @@ class BrokerRequestResultManager:
 
 class LosScriptManager:
     """
-    This class manages helper methods for managing the execution and flow of the Rscript. It starts the main method
-    flow, executes the rscript and clears a directory in wich temporary files are stored.
+    Manages execution of R script for length of stay calculations.
     """
 
     def __init__(self):
         self.__rscript_path = os.environ['RSCRIPT.SCRIPT_PATH']
-        self.__temp_result_path = os.environ['MISC.TEMP_ZIP_DIR']
-        self._start_cw = os.environ['RSCRIPT.START_CW']
-        self._end_cw = os.environ['RSCRIPT.END_CW']
-        self._los_max = os.environ['RSCRIPT.LOS_MAX']
-        self._error_max = os.environ['RSCRIPT.ERROR_MAX']
+        self.__los_max = os.environ['RSCRIPT.LOS_MAX']
+        self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
 
-    def execute_given_rscript(self, zip_file_path: str):
-        output = subprocess.check_output(['Rscript', self.__rscript_path,
-                                          zip_file_path, self._start_cw, self._end_cw,
-                                          self._los_max, self._error_max])
-        logging.info("R Script finished successfully")
-        # Decode the output to string if necessary
-        output_string = output.decode("utf-8")
-        # search output for regex "timeframe_path:"
-        result_path = re.search('timeframe_path:.*\"', output_string)[0].split(':')[1]
-        result_path = result_path.replace('\"', '')
-        return result_path
+    def execute_rscript(self, zip_file_path: str, start_cw: int, end_cw: int) -> str:
+        """
+        Executes R script with provided zip file and calendar weeks, returns path to results.
+        """
+        logging.info("Preparing rscript execution")
+        output = subprocess.run(['Rscript', self.__rscript_path, zip_file_path,
+                                 start_cw, end_cw, self.__los_max, self.__error_max],
+                                capture_output=True, text=True)
+        if output.returncode != 0:
+            raise RuntimeError(f"R script failed: {output.stderr}")
+        logging.info("Rscript finished successfully")
+        return self.__extract_result_path(output.stdout)
 
-    def update_sftp_server(self, r_result_path) -> None:
-        sftp_manager = self.__sftp_manager
-        sftp_files = sftp_manager.list_files()
-        for sftp_file in sftp_files:
-            sftp_manager.delete_file(sftp_file)
-        sftp_manager.upload_file(r_result_path)
+    def __extract_result_path(self, output: str) -> str:
+        """
+        Extracts output file path from R script stdout.
+        """
+        match = re.search(r'timeframe_path:(.+?)(?:$|\n)', output)
+        if not match:
+            raise ValueError("Could not find result path in R script output")
+        return match.group(1).strip().strip('"')
+
+
 
 
 if __name__ == '__main__':
