@@ -236,7 +236,7 @@ class LosScriptManager:
         self.__los_max = os.environ['RSCRIPT.LOS_MAX']
         self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
 
-    def execute_rscript(self, zip_file_path: str, start_cw: int, end_cw: int) -> str:
+    def execute_rscript(self, zip_file_path: str, start_cw: str, end_cw: str) -> str:
         """
         Executes R script with provided zip file and calendar weeks, returns path to results.
         """
