@@ -1,9 +1,9 @@
-# Length of Stay Calculator
-## Description
+# rki-los-uploader
+
 Script that imports case data from the emergency department and calculates an average for the length of stay of a patient. An SFTP uploader replaces the old Length of Stay (LOS) from the RKI's SFTP server with our newly calculated one.
 
 The import and upload process is performed in the Python script "los_script.py". The new LOS is calculated in an R script, which stores the result in a csv file in a temporary project directory. The dataset is imported from the AKTIN broker.
-![activity_diagram240430.png](activity_diagram240430.png)
+![activity_diagram240430.png](docs/activity_diagram240430.png)
 
 ## Requirements
 You need:
