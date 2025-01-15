@@ -38,237 +38,258 @@ from requests import Response
 
 
 class ConfigurationManager:
+  """
+  Handles loading and validating TOML configuration files into environment variables.
+  """
+  __required_keys = {
+    'BROKER.URL', 'BROKER.API_KEY',
+    'REQUESTS.TAG',
+    'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
+    'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
+  }
+
+  def __init__(self, path_toml: str):
+    self.__verify_and_load_toml(path_toml)
+
+  def __verify_and_load_toml(self, path_toml: str):
     """
-    Handles loading and validating TOML configuration files into environment variables.
+    This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
+    and sets the environment variables based on the loaded configuration.
     """
-    __required_keys = {
-        'BROKER.URL', 'BROKER.API_KEY',
-        'REQUESTS.TAG',
-        'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
-        'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
-    }
+    logging.info('Loading %s as environment vars' % path_toml)
+    self.__verify_file_exists(path_toml)
+    config = self.__load_toml_file(path_toml)
+    flattened_config = self.__flatten_dict(config)
+    self.__validate_and_set_env_vars(flattened_config)
 
-    def __init__(self, path_toml: str):
-        self.__verify_and_load_toml(path_toml)
+  def __verify_file_exists(self, path: str):
+    if not os.path.isfile(path):
+      raise SystemExit('invalid TOML file path')
 
-    def __verify_and_load_toml(self, path_toml: str):
-        """
-        This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
-        and sets the environment variables based on the loaded configuration.
-        """
-        logging.info('Loading %s as environment vars' % path_toml)
-        self.__verify_file_exists(path_toml)
-        config = self.__load_toml_file(path_toml)
-        flattened_config = self.__flatten_dict(config)
-        self.__validate_and_set_env_vars(flattened_config)
+  def __load_toml_file(self, path: str) -> dict:
+    with open(path, encoding='utf-8') as file:
+      return toml.load(file)
 
-    def __verify_file_exists(self, path: str):
-        if not os.path.isfile(path):
-            raise SystemExit('invalid TOML file path')
+  def __flatten_dict(self, d, parent_key='', sep='.') -> dict:
+    items = []
+    for k, v in d.items():
+      new_key = f'{parent_key}{sep}{k}' if parent_key else k
+      if isinstance(v, dict):
+        items.extend(self.__flatten_dict(v, new_key, sep=sep).items())
+      else:
+        items.append((new_key, v))
+    return dict(items)
 
-    def __load_toml_file(self, path: str) -> dict:
-        with open(path, encoding='utf-8') as file:
-            return toml.load(file)
-
-    def __flatten_dict(self, d, parent_key='', sep='.') -> dict:
-        items = []
-        for k, v in d.items():
-            new_key = f'{parent_key}{sep}{k}' if parent_key else k
-            if isinstance(v, dict):
-                items.extend(self.__flatten_dict(v, new_key, sep=sep).items())
-            else:
-                items.append((new_key, v))
-        return dict(items)
-
-    def __validate_and_set_env_vars(self, config: dict):
-        loaded_keys = set(config.keys())
-        missing_keys = self.__required_keys - loaded_keys
-        if missing_keys:
-            raise SystemExit(f'following keys are missing in config file: {missing_keys}')
-        for key in loaded_keys:
-            os.environ[key] = config[key]
+  def __validate_and_set_env_vars(self, config: dict):
+    loaded_keys = set(config.keys())
+    missing_keys = self.__required_keys - loaded_keys
+    if missing_keys:
+      raise SystemExit(f'following keys are missing in config file: {missing_keys}')
+    for key in loaded_keys:
+      os.environ[key] = config[key]
 
 
 class SftpFileManager:
+  """
+  A class for managing file operations with an SFTP server.
+  """
+
+  def __init__(self):
+    self.__sftp_host = os.environ['SFTP.HOST']
+    self.__sftp_port = int(os.environ['SFTP.PORT'])
+    self.__sftp_username = os.environ['SFTP.USERNAME']
+    self.__sftp_password = os.environ['SFTP.PASSWORD']
+    self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
+    self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
+    self.__connection = self.__connect_to_sftp()
+
+  def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(self.__sftp_host,
+                port=self.__sftp_port,
+                username=self.__sftp_username,
+                password=self.__sftp_password,
+                timeout=self.__sftp_timeout,
+                allow_agent=False,
+                look_for_keys=False)
+    return ssh.open_sftp()
+
+  def upload_file(self, path_file: str):
     """
-    A class for managing file operations with an SFTP server.
+    Upload a file to the SFTP server and overwrite if it already exists on the server.
     """
-    def __init__(self):
-        self.__sftp_host = os.environ['SFTP.HOST']
-        self.__sftp_port = int(os.environ['SFTP.PORT'])
-        self.__sftp_username = os.environ['SFTP.USERNAME']
-        self.__sftp_password = os.environ['SFTP.PASSWORD']
-        self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
-        self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
-        self.__connection = self.__connect_to_sftp()
+    logging.info('Sending %s to sftp server', path_file)
+    filename = os.path.basename(path_file)
+    self.__connection.put(path_file, f"{self.__sftp_foldername}/{filename}")
 
-    def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.__sftp_host,
-                    port=self.__sftp_port,
-                    username=self.__sftp_username,
-                    password=self.__sftp_password,
-                    timeout=self.__sftp_timeout,
-                    allow_agent=False,
-                    look_for_keys=False)
-        return ssh.open_sftp()
+  def list_files(self) -> list:
+    """
+    List all files in the SFTP server's specified folder.
+    """
+    logging.info('Listing files from sftp server')
+    files = self.__connection.listdir(f"{self.__sftp_foldername}")
+    return files
 
-    def upload_file(self, path_file: str):
-        """
-        Upload a file to the SFTP server and overwrite if it already exists on the server.
-        """
-        logging.info('Sending %s to sftp server', path_file)
-        filename = os.path.basename(path_file)
-        self.__connection.put(path_file, f"{self.__sftp_foldername}/{filename}")
-
-    def list_files(self) -> list:
-        """
-        List all files in the SFTP server's specified folder.
-        """
-        logging.info('Listing files from sftp server')
-        files = self.__connection.listdir(f"{self.__sftp_foldername}")
-        return files
-
-    def delete_file(self, filename: str):
-        logging.info('Deleting %s from sftp server', filename)
-        try:
-            self.__connection.remove(f"{self.__sftp_foldername}/{filename}")
-        except FileNotFoundError:
-            logging.info('%s could not be found', filename)
+  def delete_file(self, filename: str):
+    logging.info('Deleting %s from sftp server', filename)
+    try:
+      self.__connection.remove(f"{self.__sftp_foldername}/{filename}")
+    except FileNotFoundError:
+      logging.info('%s could not be found', filename)
 
 
 class BrokerRequestResultManager:
-    """
-    A class for managing request results from the AKTIN Broker. The AKTIN Broker is the data source from where our data is beeing imported.
-    """
-    __timeout = 10
+  """
+  A class for managing request results from the AKTIN Broker. The AKTIN Broker is the data source from where our data is beeing imported.
+  """
+  __timeout = 10
 
-    def __init__(self):
-        self.__broker_url = os.environ['BROKER.URL']
-        self.__admin_api_key = os.environ['BROKER.API_KEY']
-        self.__requests_tag = os.environ['REQUESTS.TAG']
-        self.__check_broker_server_availability()
+  def __init__(self):
+    self.__broker_url = os.environ['BROKER.URL']
+    self.__admin_api_key = os.environ['BROKER.API_KEY']
+    self.__requests_tag = os.environ['REQUESTS.TAG']
+    self.__check_broker_server_availability()
 
-    def __check_broker_server_availability(self):
-        url = self.__append_to_broker_url('broker', 'status')
-        try:
-            response = requests.head(url, timeout=self.__timeout)
-            response.raise_for_status()
-        except requests.exceptions.Timeout:
-            raise SystemExit('Connection to AKTIN Broker timed out')
-        except requests.exceptions.HTTPError as err:
-            raise SystemExit(f'HTTP error occurred: {err}')
-        except requests.exceptions.RequestException as err:
-            raise SystemExit(f'An ambiguous error occurred: {err}')
-
-    def __append_to_broker_url(self, *items: str) -> str:
-        url = self.__broker_url
-        for item in items:
-            url = f'{url}/{item}'
-        return url
-
-    def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
-        """
-        HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
-        """
-        return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]),
-                'Connection': 'keep-alive', 'Accept': mediatype}
-
-    def download_latest_broker_result_by_set_tag(self) -> str:
-        """
-        Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
-        :return: path to the resulting zip archive
-        """
-        id_request = self.__get_id_of_latest_request_by_set_tag()
-        id_request = str(id_request)
-        uuid = self.__export_request_result(id_request)
-        result_stream = self.__download_exported_result(uuid)
-        zip_file_path = self.__store_broker_response_as_zip(result_stream)
-        logging.info('Download finished')
-        return zip_file_path
-
-    def __get_id_of_latest_request_by_set_tag(self) -> int:
-      """
-      Asks the broker for the highest request id of a set tag. Highest ID = latest entry
-      """
-      logging.info('Checking for requests with tag %s', self.__requests_tag)
-      url = self.__append_to_broker_url('broker', 'request', 'filtered')
-      url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
-      response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+  def __check_broker_server_availability(self):
+    url = self.__append_to_broker_url('broker', 'status')
+    try:
+      response = requests.head(url, timeout=self.__timeout)
       response.raise_for_status()
-      list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
-      if len(list_request_id) < 1:
-          raise ValueError("No requests with tag: %s were found!" % self.__requests_tag)
-      logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
-      return max(list_request_id)
+    except requests.exceptions.Timeout:
+      raise SystemExit('Connection to AKTIN Broker timed out')
+    except requests.exceptions.HTTPError as err:
+      raise SystemExit(f'HTTP error occurred: {err}')
+    except requests.exceptions.RequestException as err:
+      raise SystemExit(f'An ambiguous error occurred: {err}')
 
-    def __export_request_result(self, id_request: str) -> str:
-        """
-        Tells the broker to aggregate to results of a request to a temporarily downloadable file
-        """
-        logging.info('Exporting results of %s', id_request)
-        url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
-        response = requests.post(url, headers=self.__create_basic_header('text/plain'), timeout=self.__timeout)
-        response.raise_for_status()
-        return response.text
+  def __append_to_broker_url(self, *items: str) -> str:
+    url = self.__broker_url
+    for item in items:
+      url = f'{url}/{item}'
+    return url
 
-    def __download_exported_result(self, uuid: str) -> Response:
-        logging.info('Downloading results of %s', uuid)
-        url = self.__append_to_broker_url('broker', 'download', uuid)
-        response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
-        response.raise_for_status()
-        return response
+  def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
+    """
+    HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
+    """
+    return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]),
+            'Connection': 'keep-alive', 'Accept': mediatype}
 
-    def __store_broker_response_as_zip(self, response: Response) -> str:
-        """
-        Extracts broker response results into a zip archive in script directory
-        """
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        zip_file_path = os.path.join(script_dir, 'result.zip')
-        with open(zip_file_path, 'wb') as zip_file:
-            zip_file.write(response.content)
-        return zip_file_path
+  def download_latest_broker_result_by_set_tag(self) -> str:
+    """
+    Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
+    :return: path to the resulting zip archive
+    """
+    id_request = self.__get_id_of_latest_request_by_set_tag()
+    id_request = str(id_request)
+    uuid = self.__export_request_result(id_request)
+    result_stream = self.__download_exported_result(uuid)
+    zip_file_path = self.__store_broker_response_as_zip(result_stream)
+    logging.info('Download finished')
+    return zip_file_path
+
+  def __get_id_of_latest_request_by_set_tag(self) -> int:
+    """
+    Asks the broker for the highest request id of a set tag. Highest ID = latest entry
+    """
+    logging.info('Checking for requests with tag %s', self.__requests_tag)
+    url = self.__append_to_broker_url('broker', 'request', 'filtered')
+    url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
+    response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+    response.raise_for_status()
+    list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
+    if len(list_request_id) < 1:
+      raise ValueError("No requests with tag: %s were found!" % self.__requests_tag)
+    logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
+    return max(list_request_id)
+
+  def __export_request_result(self, id_request: str) -> str:
+    """
+    Tells the broker to aggregate to results of a request to a temporarily downloadable file
+    """
+    logging.info('Exporting results of %s', id_request)
+    url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
+    response = requests.post(url, headers=self.__create_basic_header('text/plain'), timeout=self.__timeout)
+    response.raise_for_status()
+    return response.text
+
+  def __download_exported_result(self, uuid: str) -> Response:
+    logging.info('Downloading results of %s', uuid)
+    url = self.__append_to_broker_url('broker', 'download', uuid)
+    response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
+    response.raise_for_status()
+    return response
+
+  def __store_broker_response_as_zip(self, response: Response) -> str:
+    """
+    Extracts broker response results into a zip archive in script directory
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    zip_file_path = os.path.join(script_dir, 'result.zip')
+    with open(zip_file_path, 'wb') as zip_file:
+      zip_file.write(response.content)
+    return zip_file_path
 
 
+# TODO extract to location of this script
+# TODO Rename after Rscript
+# TODO cleanup result.zip and others
 class LosScriptManager:
+  """
+  Manages execution of R script for length of stay calculations.
+  """
+
+  def __init__(self):
+    self.__rscript_path = os.environ['RSCRIPT.SCRIPT_PATH']
+    self.__los_max = os.environ['RSCRIPT.LOS_MAX']
+    self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
+
+  def execute_rscript(self, zip_file_path: str, start_cw: str, end_cw: str) -> str:
     """
-    Manages execution of R script for length of stay calculations.
+    Executes R script with provided zip file and calendar weeks, returns path to results.
     """
+    cmd = ['Rscript', self.__rscript_path, zip_file_path,
+           start_cw, end_cw, self.__los_max, self.__error_max]
+    logging.info(f"Running command: {' '.join(cmd)}")
+    output = subprocess.run(cmd, capture_output=True, text=True)
+    if output.returncode != 0:
+      raise RuntimeError(f"R script failed: {output.stderr}")
+    logging.info("Rscript finished successfully")
+    return self.__extract_result_path(output.stdout)
 
-    def __init__(self):
-        self.__rscript_path = os.environ['RSCRIPT.SCRIPT_PATH']
-        self.__los_max = os.environ['RSCRIPT.LOS_MAX']
-        self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
-
-    def execute_rscript(self, zip_file_path: str, start_cw: str, end_cw: str) -> str:
-        """
-        Executes R script with provided zip file and calendar weeks, returns path to results.
-        """
-        cmd = ['Rscript', self.__rscript_path, zip_file_path,
-               start_cw, end_cw, self.__los_max, self.__error_max]
-        logging.info(f"Running command: {' '.join(cmd)}")
-        output = subprocess.run(cmd, capture_output=True, text=True)
-        if output.returncode != 0:
-            raise RuntimeError(f"R script failed: {output.stderr}")
-        logging.info("Rscript finished successfully")
-        return self.__extract_result_path(output.stdout)
-
-    def __extract_result_path(self, output: str) -> str:
-        """
-        Extracts output file path from R script stdout.
-        """
-        match = re.search(r'timeframe_path:(.+?)(?:$|\n)', output)
-        if not match:
-            raise ValueError("Could not find result path in R script output")
-        return match.group(1).strip().strip('"')
-
-
+  def __extract_result_path(self, output: str) -> str:
+    """
+    Extracts output file path from R script stdout.
+    """
+    match = re.search(r'timeframe_path:(.+?)(?:$|\n)', output)
+    if not match:
+      raise ValueError("Could not find result path in R script output")
+    return match.group(1).strip().strip('"')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        raise SystemExit('path to config TOML is missing!')
-    toml_path = sys.argv[1]
-    losmanager = LosScriptManager(toml_path)
-    losmanager.main()
+  if len(sys.argv) < 2:
+    raise SystemExit('path to config TOML is missing!')
+  toml_path = sys.argv[1]
+  losmanager = LosScriptManager(toml_path)
+  losmanager.main()
+
+"""
+    def main(self) -> None:
+        dir_manager = DirectoryManager()
+        dir_manager.create_temp_directory()
+        zip_file_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
+        r_result_path = self.execute_given_rscript(zip_file_path)
+        self.update_sftp_server(r_result_path)
+        dir_manager.cleanup()
+
+ def update_sftp_server(self, r_result_path) -> None:
+        sftp_manager = self.__sftp_manager
+        sftp_files = sftp_manager.list_files()
+        for sftp_file in sftp_files:
+            sftp_manager.delete_file(sftp_file)
+        sftp_manager.upload_file(r_result_path)
+        
+        
+"""
