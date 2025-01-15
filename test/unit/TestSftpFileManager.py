@@ -69,7 +69,7 @@ X11Forwarding no
     cls._exec_command('service ssh restart')
 
   @classmethod
-  def _exec_command(cls, command):
+  def _exec_command(cls, command) -> str:
     exit_code, output = cls.container.exec_run(command, demux=True)
     if exit_code != 0:
       stdout, stderr = output if output else (None, None)
