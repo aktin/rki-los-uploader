@@ -200,7 +200,8 @@ class BrokerRequestResultManager:
     response.raise_for_status()
     list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
     if len(list_request_id) < 1:
-      raise ValueError("No requests with tag: %s were found!" % self.__requests_tag)
+      logging.warn("No requests with tag: %s were found!" % self.__requests_tag)
+      sys.exit(0)
     logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
     return max(list_request_id)
 
