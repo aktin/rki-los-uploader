@@ -44,7 +44,7 @@ class ConfigurationManager:
     __required_keys = {
         'BROKER.URL', 'BROKER.API_KEY',
         'REQUESTS.TAG',
-        'SFTP.HOST', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
+        'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
         'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
     }
 
@@ -95,6 +95,7 @@ class SftpFileManager:
     """
     def __init__(self):
         self.__sftp_host = os.environ['SFTP.HOST']
+        self.__sftp_port = int(os.environ['SFTP.PORT'])
         self.__sftp_username = os.environ['SFTP.USERNAME']
         self.__sftp_password = os.environ['SFTP.PASSWORD']
         self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
@@ -104,9 +105,13 @@ class SftpFileManager:
     def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(self.__sftp_host, username=self.__sftp_username,
-                    password=self.__sftp_password, timeout=self.__sftp_timeout,
-                    allow_agent=False, look_for_keys=False)
+        ssh.connect(self.__sftp_host,
+                    port=self.__sftp_port,
+                    username=self.__sftp_username,
+                    password=self.__sftp_password,
+                    timeout=self.__sftp_timeout,
+                    allow_agent=False,
+                    look_for_keys=False)
         return ssh.open_sftp()
 
     def upload_file(self, path_file: str):
