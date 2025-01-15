@@ -14,11 +14,11 @@ import docker
 
 from src.los_script import SftpFileManager
 
-DOCKER_IMAGE = "ubuntu:20.04"
-USER_NAME = "sftpuser"
-USER_PASSWORD = "sftppassword"
-USER_GROUP = "sftp"
-SFTP_DIRNAME = "test"
+DOCKER_IMAGE = 'ubuntu:20.04'
+USER_NAME = 'sftpuser'
+USER_PASSWORD = 'sftppassword'
+USER_GROUP = 'sftp'
+SFTP_DIRNAME = 'test'
 PORT = 2222
 
 
