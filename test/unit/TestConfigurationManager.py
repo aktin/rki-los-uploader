@@ -5,20 +5,62 @@
 """
 
 import os
-from pathlib import Path
+import tempfile
 
 import pytest
 
 from src.los_script import ConfigurationManager
 
 
-@pytest.fixture(scope="module")
-def config_paths():
-  base_path = Path(__file__).parent.parent / 'resources'
-  return {
-    'valid': str(base_path / 'test.toml'),
-    'invalid': str(base_path / 'invalid.toml')
+@pytest.fixture
+def valid_toml_content():
+  return """
+[BROKER]
+URL = "test-url"
+API_KEY = "test-key"
+
+[REQUESTS]
+TAG = "test-tag"
+
+[SFTP]
+HOST = "test-host"
+PORT = "22"
+USERNAME = "test-user"
+PASSWORD = "test-pass"
+TIMEOUT = "30"
+FOLDERNAME = "test-folder"
+
+[RSCRIPT]
+SCRIPT_PATH = "/path/to/script"
+START_CW = "1"
+END_CW = "52"
+LOS_MAX = "30"
+ERROR_MAX = "0.05"
+"""
+
+
+@pytest.fixture
+def invalid_toml_content():
+  return """
+[BROKER]
+URL = "test-url"
+API_KEY = "test-key"
+"""
+
+
+@pytest.fixture
+def config_paths(valid_toml_content, invalid_toml_content):
+  with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as valid_file:
+    valid_file.write(valid_toml_content)
+  with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as invalid_file:
+    invalid_file.write(invalid_toml_content)
+  paths = {
+    'valid': valid_file.name,
+    'invalid': invalid_file.name
   }
+  yield paths
+  os.unlink(paths['valid'])
+  os.unlink(paths['invalid'])
 
 
 @pytest.fixture(autouse=True)
