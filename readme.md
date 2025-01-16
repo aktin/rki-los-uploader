@@ -1,4 +1,4 @@
-# rki-los-uploader ![Python 3.10.x](https://img.shields.io/badge/python-3.10.x-blue) ![R 4.1.x](https://img.shields.io/badge/R-4.1.x-red)
+# rki-los-uploader ![Python 3.10.12](https://img.shields.io/badge/python-3.10.12-blue) ![R 4.1.2](https://img.shields.io/badge/R-4.1.2-red)
 
 Script that imports case data from the emergency department and calculates an average for the length of stay of a patient. An SFTP uploader replaces the old Length of Stay (LOS) from the RKI's SFTP server with our newly calculated one.
 
