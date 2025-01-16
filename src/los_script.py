@@ -185,7 +185,7 @@ class BrokerRequestResultManager:
     id_request = str(id_request)
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
-    zip_file_path = self.__store_broker_response_as_zip(result_stream)
+    zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request)
     logging.info('Download finished')
     return zip_file_path
 
@@ -195,7 +195,8 @@ class BrokerRequestResultManager:
     """
     logging.info('Checking for requests with tag %s', self.__requests_tag)
     url = self.__append_to_broker_url('broker', 'request', 'filtered')
-    url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
+    url = '?'.join(
+        [url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
     response.raise_for_status()
     list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
@@ -222,12 +223,12 @@ class BrokerRequestResultManager:
     response.raise_for_status()
     return response
 
-  def __store_broker_response_as_zip(self, response: Response) -> str:
+  def __store_broker_response_as_zip(self, response: Response, id_request: str) -> str:
     """
     Extracts broker response results into a zip archive in script directory
     """
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    zip_file_path = os.path.join(script_dir, 'result.zip')
+    zip_file_path = os.path.join(script_dir, f'result{id_request}.zip')
     with open(zip_file_path, 'wb') as zip_file:
       zip_file.write(response.content)
     return zip_file_path
@@ -270,6 +271,7 @@ class LosScriptManager:
 
 
 if __name__ == '__main__':
+  logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
   if len(sys.argv) < 2:
     raise SystemExit('path to config TOML is missing!')
   toml_path = sys.argv[1]
