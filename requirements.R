@@ -1,7 +1,9 @@
 packages <- c(
-  "ggplot2",
-  "dplyr",
-  "tidyr"
+  "tidyverse",
+  "conflicted",
+  "mosaic",
+  "ISOweek",
+  "r2r"
 )
 
 for (package in packages) {
