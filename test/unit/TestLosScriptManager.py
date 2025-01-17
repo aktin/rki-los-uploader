@@ -59,7 +59,7 @@ def test_multiple_clinics(los_manager: LosScriptManager, test_zip_path: Path, st
 
 def test_missing_values_in_aufnahme_ts(los_manager: LosScriptManager, test_zip_path: Path, start_end_cw: tuple[str, str]):
   test_data = ["aufnahme_ts\tentlassung_ts\ttriage_ts\ta_encounter_num\ta_encounter_ide\ta_billing_ide\n"
-               "2023-07-28T23:02:49Z\t2023-07-28T21:55:36Z\t4\t4\t4\n"
+               "2023-07-28T21:55:36Z\t2023-07-28T23:02:49Z\t\t4\t4\t4\n"
                "2023-07-28T22:21:09Z\t2023-07-28T23:37:27Z\t2023-07-28T22:21:49Z\t5\t5\t5\n"
                "2023-07-28T23:46:09Z\t2023-07-29T00:55:15Z\t2023-07-28T23:47:20Z\t6\t6\t6"]
   expected = __get_standard_expected_data("1")
@@ -91,7 +91,7 @@ def test_no_column_entlassung_ts(los_manager: LosScriptManager, test_zip_path: P
                 "2023-07-28T21:55:36Z\t4\t4\t4\n"
                 "2023-07-28T22:21:09Z\t5\t5\t5\n"
                 "2023-07-28T23:46:09Z\t6\t6\t6")]
-  expected = [["no_data"], ["no_data"]]
+  expected = [["message"], ["Error: No Data found in case_data files!"]]
   assert __compare_r_result_to_expected(los_manager, test_zip_path, start_end_cw, test_data, expected)
 
 
@@ -113,7 +113,7 @@ def __compare_r_result_to_expected(los_manager: LosScriptManager, test_zip_path:
   result_path = los_manager.execute_rscript(str(zip_path), *start_end_cw)
   actual_df = pd.read_csv(result_path)
   expected_df = pd.DataFrame(expected_data[1:], columns=expected_data[0])
-  return actual_df.equals(expected_df)
+  return actual_df.astype(str).equals(expected_df)
 
 
 def __create_test_zip(zip_path: Path, test_data: list[str]) -> Path:

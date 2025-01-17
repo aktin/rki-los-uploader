@@ -75,16 +75,17 @@ processFiles <- function(exDir, file_numbers) {
         next
       }
 
-      if(!"aufnahme_ts" %in% colnames(df)) {
-        df$aufnahme_ts <- NA
+     if(!"aufnahme_ts" %in% colnames(df)) {
+        df$aufnahme_ts <- as.POSIXct(NA, tz = "UTC")
       }
 
       if(!"triage_ts" %in% colnames(df)) {
-        df$triage_ts <- NA
+        df$triage_ts <- as.POSIXct(NA, tz = "UTC")
       }
 
       # Remove all rows where triage and aufnahme (admittance) is NA
       df <- df[!(is.na(df$triage_ts) & is.na(df$aufnahme_ts)), ]
+      df$aufnahme_ts[is.na(df$aufnahme_ts)] <- df$triage_ts[is.na(df$aufnahme_ts)]
       all_data_df <- rbind(all_data_df, df)
     } else {
       print(paste("No file found: ", filepath_i))
@@ -204,7 +205,7 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
   timeframe <- complete_db_Pand %>%
     group_by(calendarweek_year, cw) %>%
-    summarise(weighted_los = weighted.mean(los,clinic))
+    summarise(weighted_los = mean(los, na.rm = TRUE))
   case_num <- calculateCaseNumber(complete_db_Pand)
   timeframe  <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
@@ -311,7 +312,7 @@ main <- function(){
     if(!is.null(case_data)) {
       timeframe <- performAnalysis(case_data)
     } else {
-      timeframe <- data.frame("Error" = {"No Data found in case_data files!"})
+      timeframe <- data.frame(message = "Error: No Data found in case_data files!")
     print("case_data is NULL, check the given table for missing columns.")
     }
     
