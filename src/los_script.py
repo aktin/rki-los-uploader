@@ -23,9 +23,11 @@ Created on 22.03.2024
 #
 #
 
+import datetime
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib
@@ -262,7 +264,42 @@ class LosScriptManager:
     return result_path
 
 
+class LosResultFileManager:
+  """
+  Manages result files for LOS calculations, including renaming and cleanup.
+  """
 
+  def rename_result_file_to_standardized_form(self, result_file_path: Path) -> Path:
+    """
+    Renames the result file to the standardized form:
+    LOS_<year of CW-3>_W<CW-3>_to_<CurrentYear>-W<CurrentCW>_<CurrentDate>-<CurrentTime>
+    """
+    result_file_path = result_file_path.resolve()
+    if not result_file_path.exists():
+      raise FileNotFoundError(f'File {result_file_path} does not exist.')
+    now = datetime.datetime.now()
+    current_year, current_week, _ = now.isocalendar()
+    adjusted_year, adjusted_week = self.__calculate_cw_minus_three(current_year, current_week)
+    timestamp = now.strftime('%Y%m%d-%H%M%S')
+    new_filename = f'LOS_{adjusted_year}-W{adjusted_week:02d}_to_{current_year}-W{current_week:02d}_{timestamp}'
+    new_file_path = result_file_path.with_name(new_filename + result_file_path.suffix)
+    result_file_path.rename(new_file_path)
+    return new_file_path
+
+  def __calculate_cw_minus_three(self, year: int, week: int) -> tuple[int, int]:
+    if week > 3:
+      return year, week - 3
+    else:
+      # Need to get last year's total weeks
+      last_year = year - 1
+      last_year_weeks = datetime.date(last_year, 12, 28).isocalendar()[1]
+      return last_year, last_year_weeks - (3 - week)
+
+  def clear_rscript_data(self, result_file_path: Path):
+    result_dir = result_file_path.resolve().parent
+    if not result_dir.exists():
+      raise FileNotFoundError(f"Directory {result_dir} does not exist.")
+    shutil.rmtree(result_dir)
 
 
 if __name__ == '__main__':
