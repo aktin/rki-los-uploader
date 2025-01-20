@@ -164,26 +164,17 @@ class BrokerRequestResultManager:
       raise SystemExit(f'An ambiguous error occurred: {err}')
 
   def __append_to_broker_url(self, *items: str) -> str:
-    url = self.__broker_url
-    for item in items:
-      url = f'{url}/{item}'
-    return url
+    return "/".join([self.__broker_url] + list(items))
 
   def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
-    """
-    HTTP header for requests to AKTIN Broker. Includes the authorization, connection, and accepted media type.
-    """
-    return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]),
-            'Connection': 'keep-alive', 'Accept': mediatype}
+    return {'Authorization': f'Bearer {self.__admin_api_key}', 'Connection': 'keep-alive', 'Accept': mediatype}
 
-  # TODO enhance testability with target_path
-  def download_latest_broker_result_by_set_tag(self, zip_target_path: str = None) -> str:
+  def download_latest_broker_result_by_set_tag(self, zip_target_path: Path = None) -> Path:
     """
     Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
-    :return: path to the resulting zip archive
+    :return: Path to the resulting zip archive.
     """
-    id_request = self.__get_id_of_latest_request_by_set_tag()
-    id_request = str(id_request)
+    id_request = str(self.__get_id_of_latest_request_by_set_tag())
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
     zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request, zip_target_path)
@@ -192,16 +183,15 @@ class BrokerRequestResultManager:
 
   def __get_id_of_latest_request_by_set_tag(self) -> int:
     """
-    Asks the broker for the highest request id of a set tag. Highest ID = latest entry
+    Asks the broker for the highest request ID of a set tag.
     """
-    logging.info('Checking for requests with tag %s', self.__requests_tag)
     url = self.__append_to_broker_url('broker', 'request', 'filtered')
     url = '?'.join(
         [url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
     response.raise_for_status()
     list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
-    if len(list_request_id) < 1:
+    if not list_request_id:
       logging.warning("No requests with tag: %s were found!" % self.__requests_tag)
       sys.exit(0)
     logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
@@ -209,7 +199,7 @@ class BrokerRequestResultManager:
 
   def __export_request_result(self, id_request: str) -> str:
     """
-    Tells the broker to aggregate to results of a request to a temporarily downloadable file
+    Tells the broker to aggregate request results into a temporarily downloadable file.
     """
     logging.info('Exporting results of %s', id_request)
     url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
@@ -224,19 +214,18 @@ class BrokerRequestResultManager:
     response.raise_for_status()
     return response
 
-  def __store_broker_response_as_zip(self, response: Response, id_request: str, target_path: str = None) -> str:
+  def __store_broker_response_as_zip(self, response: Response, id_request: str, target_path: Path = None) -> Path:
     """
     Saves broker response content as a zip archive in the specified or script directory.
     """
-    target_path = target_path or os.path.dirname(os.path.abspath(__file__))
-    zip_file_path = os.path.join(target_path, f'result{id_request}.zip')
+    target_path = target_path or Path(__file__).resolve().parent
+    zip_file_path = target_path / f'result{id_request}.zip'
     logging.info("Writing results to %s", zip_file_path)
-    with open(zip_file_path, 'wb') as zip_file:
+    with zip_file_path.open('wb') as zip_file:
       zip_file.write(response.content)
     return zip_file_path
 
 
-# TODO extract to location of this script
 # TODO Rename after Rscript
 # TODO cleanup result.zip and others
 class LosScriptManager:
@@ -245,16 +234,16 @@ class LosScriptManager:
   """
 
   def __init__(self):
-    self.__rscript_path = os.environ['RSCRIPT.SCRIPT_PATH']
+    self.__rscript_path = Path(os.environ['RSCRIPT.SCRIPT_PATH']).resolve()
     self.__los_max = os.environ['RSCRIPT.LOS_MAX']
     self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
 
-  def execute_rscript(self, zip_file_path: str, start_cw: str, end_cw: str) -> str:
+  def execute_rscript(self, zip_file_path: Path, start_cw: str, end_cw: str) -> Path:
     """
     Executes R script with provided zip file and calendar weeks, returns path to results.
     """
-    cmd = ['Rscript', self.__rscript_path, zip_file_path,
-           start_cw, end_cw, self.__los_max, self.__error_max]
+    zip_file_path = Path(zip_file_path).resolve()
+    cmd = ['Rscript', self.__rscript_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max]
     logging.info(f"Running command: {' '.join(cmd)}")
     output = subprocess.run(cmd, capture_output=True, text=True)
     if output.returncode != 0:
@@ -262,14 +251,18 @@ class LosScriptManager:
     logging.info("Rscript finished successfully")
     return self.__extract_result_path(output.stdout)
 
-  def __extract_result_path(self, output: str) -> str:
+  def __extract_result_path(self, output: str) -> Path:
     """
     Extracts output file path from R script stdout.
     """
     match = re.search(r'timeframe_path:(.+?)(?:$|\n)', output)
     if not match:
       raise ValueError("Could not find result path in R script output")
-    return match.group(1).strip().strip('"')
+    result_path = Path(match.group(1).strip().strip('"')).resolve()
+    return result_path
+
+
+
 
 
 if __name__ == '__main__':
