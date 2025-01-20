@@ -6,7 +6,7 @@ Created on 22.03.2024
 """
 
 #
-#      Copyright (c) 2024 AKTIN
+#      Copyright (c) 2025 AKTIN
 #
 #      This program is free software: you can redistribute it and/or modify
 #      it under the terms of the GNU Affero General Public License as
