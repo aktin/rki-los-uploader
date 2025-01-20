@@ -278,14 +278,14 @@ class LosResultFileManager:
       raise FileNotFoundError(f'File {result_file_path} does not exist.')
     now = datetime.datetime.now()
     current_year, current_week, _ = now.isocalendar()
-    adjusted_year, adjusted_week = self.__calculate_cw_minus_three(current_year, current_week)
+    adjusted_year, adjusted_week = self.calculate_cw_minus_three(current_year, current_week)
     timestamp = now.strftime('%Y%m%d-%H%M%S')
     new_filename = f'LOS_{adjusted_year}-W{adjusted_week:02d}_to_{current_year}-W{current_week:02d}_{timestamp}'
     new_file_path = result_file_path.with_name(new_filename + result_file_path.suffix)
     result_file_path.rename(new_file_path)
     return new_file_path
 
-  def __calculate_cw_minus_three(self, year: int, week: int) -> tuple[int, int]:
+  def calculate_cw_minus_three(self, year: int, week: int) -> tuple[int, int]:
     if week > 3:
       return year, week - 3
     else:
@@ -301,29 +301,43 @@ class LosResultFileManager:
     shutil.rmtree(result_dir)
 
 
-if __name__ == '__main__':
+class LosProcessor:
+  def __init__(self, config_path: str):
+    config_path = Path(config_path).resolve()
+    self.__config_manager = ConfigurationManager(config_path)
+    self.__broker_manager = BrokerRequestResultManager()
+    self.__sftp_manager = SftpFileManager()
+    self.__los_script = LosScriptManager()
+    self.__result_manager = LosResultFileManager()
+
+  def process(self):
+    try:
+      now = datetime.datetime.now()
+      current_year, current_week, _ = now.isocalendar()
+      _, adjusted_week = self.__result_manager.calculate_cw_minus_three(current_year, current_week)
+      zip_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
+      result_path = self.__los_script.execute_rscript(zip_path, str(current_week), str(adjusted_week))
+      renamed_path = self.__result_manager.rename_result_file_to_standardized_form(result_path)
+      self.__clean_and_upload_sftp(renamed_path)
+      self.__result_manager.clear_rscript_data(renamed_path)
+    except Exception as e:
+      logging.error(f"Error during LOS processing: {e}")
+      raise
+
+  def __clean_and_upload_sftp(self, file_path: Path):
+    files = self.__sftp_manager.list_files()
+    for file in files:
+      self.__sftp_manager.delete_file(file)
+    self.__sftp_manager.upload_file(file_path)
+
+
+def main():
   logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
   if len(sys.argv) < 2:
-    raise SystemExit('path to config TOML is missing!')
-  toml_path = sys.argv[1]
-  losmanager = LosScriptManager(toml_path)
-  losmanager.main()
+    raise SystemExit('Path to config TOML is missing!')
+  processor = LosProcessor(sys.argv[1])
+  processor.process()
 
-"""
-    def main(self) -> None:
-        dir_manager = DirectoryManager()
-        dir_manager.create_temp_directory()
-        zip_file_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
-        r_result_path = self.execute_given_rscript(zip_file_path)
-        self.update_sftp_server(r_result_path)
-        dir_manager.cleanup()
 
- def update_sftp_server(self, r_result_path) -> None:
-        sftp_manager = self.__sftp_manager
-        sftp_files = sftp_manager.list_files()
-        for sftp_file in sftp_files:
-            sftp_manager.delete_file(sftp_file)
-        sftp_manager.upload_file(r_result_path)
-        
-        
-"""
+if __name__ == '__main__':
+  main()
