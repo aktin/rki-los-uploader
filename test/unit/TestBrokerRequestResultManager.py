@@ -110,10 +110,8 @@ def test_download_latest_broker_result_multiple_requests(docker_setup, broker_ma
   assert zip_path.name == f'result{request_id2}.zip'
 
 
-def test_download_latest_broker_result_wrong_tag(docker_setup):
+def test_download_latest_broker_result_wrong_tag(docker_setup, broker_manager):
   """Should not raise an exception but log a warning"""
-  os.environ['REQUESTS.TAG'] = 'wrong_tag'
-  broker_manager2 = BrokerRequestResultManager()
   with pytest.raises(SystemExit) as cm:
-    broker_manager2.download_latest_broker_result_by_set_tag()
+    broker_manager.download_latest_broker_result_by_set_tag(requests_tag='wrong tag')
   assert cm.value.code == 0

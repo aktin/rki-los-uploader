@@ -171,25 +171,26 @@ class BrokerRequestResultManager:
   def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
     return {'Authorization': f'Bearer {self.__admin_api_key}', 'Connection': 'keep-alive', 'Accept': mediatype}
 
-  def download_latest_broker_result_by_set_tag(self, zip_target_path: Path = None) -> Path:
+  def download_latest_broker_result_by_set_tag(self, zip_target_path: Path = None, requests_tag: str = None) -> Path:
     """
     Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
     :return: Path to the resulting zip archive.
     """
-    id_request = str(self.__get_id_of_latest_request_by_set_tag())
+    id_request = str(self.__get_id_of_latest_request_by_set_tag(requests_tag))
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
     zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request, zip_target_path)
     logging.info('Download finished')
     return zip_file_path
 
-  def __get_id_of_latest_request_by_set_tag(self) -> int:
+  def __get_id_of_latest_request_by_set_tag(self, requests_tag: str = None) -> int:
     """
     Asks the broker for the highest request ID of a set tag.
     """
+    requests_tag = requests_tag or self.__requests_tag
     url = self.__append_to_broker_url('broker', 'request', 'filtered')
     url = '?'.join(
-        [url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % self.__requests_tag})])
+        [url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % requests_tag})])
     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
     response.raise_for_status()
     list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
@@ -228,8 +229,6 @@ class BrokerRequestResultManager:
     return zip_file_path
 
 
-# TODO Rename after Rscript
-# TODO cleanup result.zip and others
 class LosScriptManager:
   """
   Manages execution of R script for length of stay calculations.
