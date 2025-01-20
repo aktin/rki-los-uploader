@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 @AUTHOR: Alexander Kombeiz (akombeiz@ukaachen.de)
-@VERSION=1.1
 """
 
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,7 +12,7 @@ from src.los_script import ConfigurationManager
 
 
 @pytest.fixture
-def valid_toml_content():
+def valid_toml_content() -> str:
   return """
 [BROKER]
 URL = "test-url"
@@ -41,7 +39,7 @@ ERROR_MAX = "0.05"
 
 
 @pytest.fixture
-def invalid_toml_content():
+def invalid_toml_content() -> str:
   return """
 [BROKER]
 URL = "test-url"
@@ -50,17 +48,12 @@ API_KEY = "test-key"
 
 
 @pytest.fixture
-def config_paths(valid_toml_content, invalid_toml_content):
-  with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as valid_file:
-    valid_file.write(valid_toml_content)
-    valid_path = Path(valid_file.name)
-  with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as invalid_file:
-    invalid_file.write(invalid_toml_content)
-    invalid_path = Path(invalid_file.name)
-  paths = {'valid': valid_path, 'invalid': invalid_path}
-  yield paths
-  valid_path.unlink(missing_ok=True)
-  invalid_path.unlink(missing_ok=True)
+def config_paths(valid_toml_content, invalid_toml_content, tmp_path) -> dict:
+  valid_path = tmp_path / "valid.toml"
+  invalid_path = tmp_path / "invalid.toml"
+  valid_path.write_text(valid_toml_content)
+  invalid_path.write_text(invalid_toml_content)
+  return {'valid': valid_path, 'invalid': invalid_path}
 
 
 @pytest.fixture(autouse=True)
