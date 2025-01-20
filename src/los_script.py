@@ -30,6 +30,7 @@ import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
+from pathlib import Path
 
 import paramiko
 import requests
@@ -48,26 +49,27 @@ class ConfigurationManager:
     'RSCRIPT.SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
   }
 
-  def __init__(self, path_toml: str):
+  def __init__(self, path_toml: Path):
     self.__verify_and_load_toml(path_toml)
 
-  def __verify_and_load_toml(self, path_toml: str):
+  def __verify_and_load_toml(self, path_toml: Path):
     """
     This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
     and sets the environment variables based on the loaded configuration.
     """
-    logging.info('Loading %s as environment vars' % path_toml)
+    path_toml = Path(path_toml).resolve()
+    logging.info('Loading %s as environment vars', path_toml)
     self.__verify_file_exists(path_toml)
     config = self.__load_toml_file(path_toml)
     flattened_config = self.__flatten_dict(config)
     self.__validate_and_set_env_vars(flattened_config)
 
-  def __verify_file_exists(self, path: str):
-    if not os.path.isfile(path):
-      raise SystemExit('invalid TOML file path')
+  def __verify_file_exists(self, path: Path):
+    if not path.exists() or not path.is_file():
+      raise SystemExit('Invalid TOML file path')
 
-  def __load_toml_file(self, path: str) -> dict:
-    with open(path, encoding='utf-8') as file:
+  def __load_toml_file(self, path: Path) -> dict:
+    with path.open(encoding='utf-8') as file:
       return toml.load(file)
 
   def __flatten_dict(self, d, parent_key='', sep='.') -> dict:
@@ -84,9 +86,9 @@ class ConfigurationManager:
     loaded_keys = set(config.keys())
     missing_keys = self.__required_keys - loaded_keys
     if missing_keys:
-      raise SystemExit(f'following keys are missing in config file: {missing_keys}')
-    for key in loaded_keys:
-      os.environ[key] = config[key]
+      raise SystemExit(f'Missing keys in config file: {missing_keys}')
+    for key, value in config.items():
+      os.environ[key] = str(value)
 
 
 class SftpFileManager:
@@ -100,7 +102,7 @@ class SftpFileManager:
     self.__sftp_username = os.environ['SFTP.USERNAME']
     self.__sftp_password = os.environ['SFTP.PASSWORD']
     self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
-    self.__sftp_foldername = os.environ['SFTP.FOLDERNAME']
+    self.__sftp_foldername = Path(os.environ['SFTP.FOLDERNAME'])
     self.__connection = self.__connect_to_sftp()
 
   def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
@@ -115,26 +117,24 @@ class SftpFileManager:
                 look_for_keys=False)
     return ssh.open_sftp()
 
-  def upload_file(self, path_file: str):
+  def upload_file(self, path_file: Path):
     """
     Upload a file to the SFTP server and overwrite if it already exists on the server.
     """
-    logging.info('Sending %s to sftp server', path_file)
-    filename = os.path.basename(path_file)
-    self.__connection.put(path_file, f"{self.__sftp_foldername}/{filename}")
+    path_file = Path(path_file).resolve()
+    if not path_file.exists():
+      raise FileNotFoundError(f"File {path_file} does not exist.")
+    logging.info('Sending %s to SFTP server', path_file)
+    self.__connection.put(str(path_file), str(self.__sftp_foldername / path_file.name))
 
   def list_files(self) -> list:
-    """
-    List all files in the SFTP server's specified folder.
-    """
-    logging.info('Listing files from sftp server')
-    files = self.__connection.listdir(f"{self.__sftp_foldername}")
-    return files
+    logging.info('Listing files from SFTP server')
+    return self.__connection.listdir(str(self.__sftp_foldername))
 
   def delete_file(self, filename: str):
-    logging.info('Deleting %s from sftp server', filename)
+    logging.info('Deleting %s from SFTP server', filename)
     try:
-      self.__connection.remove(f"{self.__sftp_foldername}/{filename}")
+      self.__connection.remove(str(self.__sftp_foldername / filename))
     except FileNotFoundError:
       logging.info('%s could not be found', filename)
 
@@ -176,7 +176,8 @@ class BrokerRequestResultManager:
     return {'Authorization': ' '.join(['Bearer', self.__admin_api_key]),
             'Connection': 'keep-alive', 'Accept': mediatype}
 
-  def download_latest_broker_result_by_set_tag(self) -> str:
+  # TODO enhance testability with target_path
+  def download_latest_broker_result_by_set_tag(self, zip_target_path: str = None) -> str:
     """
     Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
     :return: path to the resulting zip archive
@@ -185,7 +186,7 @@ class BrokerRequestResultManager:
     id_request = str(id_request)
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
-    zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request)
+    zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request, zip_target_path)
     logging.info('Download finished')
     return zip_file_path
 
@@ -201,7 +202,7 @@ class BrokerRequestResultManager:
     response.raise_for_status()
     list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
     if len(list_request_id) < 1:
-      logging.warn("No requests with tag: %s were found!" % self.__requests_tag)
+      logging.warning("No requests with tag: %s were found!" % self.__requests_tag)
       sys.exit(0)
     logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
     return max(list_request_id)
@@ -223,12 +224,13 @@ class BrokerRequestResultManager:
     response.raise_for_status()
     return response
 
-  def __store_broker_response_as_zip(self, response: Response, id_request: str) -> str:
+  def __store_broker_response_as_zip(self, response: Response, id_request: str, target_path: str = None) -> str:
     """
-    Extracts broker response results into a zip archive in script directory
+    Saves broker response content as a zip archive in the specified or script directory.
     """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    zip_file_path = os.path.join(script_dir, f'result{id_request}.zip')
+    target_path = target_path or os.path.dirname(os.path.abspath(__file__))
+    zip_file_path = os.path.join(target_path, f'result{id_request}.zip')
+    logging.info("Writing results to %s", zip_file_path)
     with open(zip_file_path, 'wb') as zip_file:
       zip_file.write(response.content)
     return zip_file_path

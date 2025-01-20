@@ -46,10 +46,10 @@ class TestSftpFileManager(unittest.TestCase):
 
   @classmethod
   def setup_sftp_directory(cls):
-    cls._exec_command('mkdir -p /var/sftp/' + SFTP_DIRNAME)
+    cls._exec_command(f'mkdir -p /var/sftp/{SFTP_DIRNAME}')
     cls._exec_command('chown root:root /var/sftp')
     cls._exec_command('chmod 755 /var/sftp')
-    cls._exec_command(f'chown {USER_NAME}:{USER_GROUP} /var/sftp/' + SFTP_DIRNAME)
+    cls._exec_command(f'chown {USER_NAME}:{USER_GROUP} /var/sftp/{SFTP_DIRNAME}')
 
   @classmethod
   def configure_sshd(cls):
@@ -101,49 +101,43 @@ X11Forwarding no
   @classmethod
   def tearDownClass(cls):
     print(cls.container.logs().decode())
-    shutil.rmtree(cls.temp_dir)
     if hasattr(cls, 'container'):
       cls.container.remove(force=True)
+    shutil.rmtree(cls.temp_dir)
 
   def test_upload_file(self):
-    test_file = Path(self.temp_dir) / 'test_upload.txt'
-    test_content = 'test content'
-    test_file.write_text(test_content)
-    self.sftp_manager.upload_file(str(test_file))
+    test_file = self.temp_dir / 'test_upload.txt'
+    test_file.write_text('test content')
+    self.sftp_manager.upload_file(test_file)
     files = self.sftp_manager.list_files()
-    self.assertIn('test_upload.txt', files)
+    self.assertIn(test_file.name, files)
 
   def test_upload_file_overwrite(self):
-    test_file = Path(self.temp_dir) / 'test_overwrite.txt'
+    test_file = self.temp_dir / 'test_overwrite.txt'
     test_file.write_text('initial content')
-    self.sftp_manager.upload_file(str(test_file))
-    # Modify and upload again
+    self.sftp_manager.upload_file(test_file)
     test_file.write_text('new content')
-    self.sftp_manager.upload_file(str(test_file))
-    # Verify only one file exists
+    self.sftp_manager.upload_file(test_file)
     files = self.sftp_manager.list_files()
-    self.assertEqual(files.count('test_overwrite.txt'), 1)
+    self.assertEqual(files.count(test_file.name), 1)
 
-  def test_list_files(self):
-    test_files = ['test1.txt', 'test2.txt', 'test3.txt']
-    for filename in test_files:
-      test_file = Path(self.temp_dir) / filename
-      test_file.write_text('content')
-      self.sftp_manager.upload_file(str(test_file))
-    files = self.sftp_manager.list_files()
-    for filename in test_files:
-      self.assertIn(filename, files)
+  def test_upload_nonexistent_file(self):
+    missing_file = self.temp_dir / 'missing.txt'
+    with self.assertRaises(FileNotFoundError):
+      self.sftp_manager.upload_file(missing_file)
 
   def test_delete_file(self):
-    test_file = Path(self.temp_dir) / 'test_delete.txt'
+    test_file = self.temp_dir / 'test_delete.txt'
     test_file.write_text('content')
-    self.sftp_manager.upload_file(str(test_file))
-    self.sftp_manager.delete_file('test_delete.txt')
+    self.sftp_manager.upload_file(test_file)
+    self.sftp_manager.delete_file(test_file.name)
     files = self.sftp_manager.list_files()
-    self.assertNotIn('test_delete.txt', files)
+    self.assertNotIn(test_file.name, files)
 
   def test_delete_nonexistent_file(self):
-    # Should not raise an exception
+    """
+    Ensure deleting a non-existent file does not raise an exception.
+    """
     self.sftp_manager.delete_file('nonexistent.txt')
 
 

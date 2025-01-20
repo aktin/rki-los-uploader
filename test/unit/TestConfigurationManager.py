@@ -6,6 +6,7 @@
 
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -52,15 +53,14 @@ API_KEY = "test-key"
 def config_paths(valid_toml_content, invalid_toml_content):
   with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as valid_file:
     valid_file.write(valid_toml_content)
+    valid_path = Path(valid_file.name)
   with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as invalid_file:
     invalid_file.write(invalid_toml_content)
-  paths = {
-    'valid': valid_file.name,
-    'invalid': invalid_file.name
-  }
+    invalid_path = Path(invalid_file.name)
+  paths = {'valid': valid_path, 'invalid': invalid_path}
   yield paths
-  os.unlink(paths['valid'])
-  os.unlink(paths['invalid'])
+  valid_path.unlink(missing_ok=True)
+  invalid_path.unlink(missing_ok=True)
 
 
 @pytest.fixture(autouse=True)
@@ -70,10 +70,7 @@ def cleanup_env():
   """
   yield
   env_prefixes = ['BROKER', 'REQUESTS', 'SFTP', 'MISC', 'RSCRIPT']
-  keys_to_remove = [
-    key for key in os.environ
-    if any(key.startswith(prefix) for prefix in env_prefixes)
-  ]
+  keys_to_remove = [key for key in os.environ if any(key.startswith(prefix) for prefix in env_prefixes)]
   for key in keys_to_remove:
     del os.environ[key]
 
@@ -85,10 +82,10 @@ def test_valid_config_loads_successfully(config_paths):
 
 
 def test_missing_file_raises_error():
-  with pytest.raises(SystemExit, match='invalid TOML file path'):
-    ConfigurationManager('nonexistent.toml')
+  with pytest.raises(SystemExit, match='Invalid TOML file path'):
+    ConfigurationManager(Path('nonexistent.toml'))
 
 
 def test_missing_required_keys_raises_error(config_paths):
-  with pytest.raises(SystemExit, match='following keys are missing'):
+  with pytest.raises(SystemExit, match='Missing keys in config file'):
     ConfigurationManager(config_paths['invalid'])
