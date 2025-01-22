@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on 22.03.2024
 @AUTHOR: Wiliam Hoy (whoy@ukaachen.de), Alexander Kombeiz (akombeiz@ukaachen.de)
-@VERSION=1.1
 """
 
 #
@@ -41,9 +39,16 @@ from requests import Response
 
 
 class ConfigurationManager:
+  """Manages TOML configuration loading and environment variable setup.
+
+  This class validates and loads configuration from a TOML file into environment
+  variables for use by other components. It ensures all required configuration
+  keys are present and properly formatted.
+
+  Attributes:
+      __required_keys (set): Set of configuration keys that must be present
   """
-  Handles loading and validating TOML configuration files into environment variables.
-  """
+
   __required_keys = {
     'BROKER.URL', 'BROKER.API_KEY',
     'REQUESTS.TAG',
@@ -55,10 +60,6 @@ class ConfigurationManager:
     self.__verify_and_load_toml(path_toml)
 
   def __verify_and_load_toml(self, path_toml: Path):
-    """
-    This method verifies the TOML file path, loads the configuration, flattens it into a dictionary,
-    and sets the environment variables based on the loaded configuration.
-    """
     path_toml = Path(path_toml).resolve()
     logging.info('Loading %s as environment vars', path_toml)
     self.__verify_file_exists(path_toml)
@@ -74,7 +75,7 @@ class ConfigurationManager:
     with path.open(encoding='utf-8') as file:
       return toml.load(file)
 
-  def __flatten_dict(self, d, parent_key='', sep='.') -> dict:
+  def __flatten_dict(self, d: dict, parent_key: str = '', sep: str = '.') -> dict:
     items = []
     for k, v in d.items():
       new_key = f'{parent_key}{sep}{k}' if parent_key else k
@@ -94,8 +95,10 @@ class ConfigurationManager:
 
 
 class SftpFileManager:
-  """
-  A class for managing file operations with an SFTP server.
+  """Manages SFTP server file operations.
+
+  Handles uploading, listing and deleting files on a configured SFTP server.
+  Uses environment variables for connection settings.
   """
 
   def __init__(self):
@@ -110,19 +113,18 @@ class SftpFileManager:
   def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(self.__sftp_host,
-                port=self.__sftp_port,
-                username=self.__sftp_username,
-                password=self.__sftp_password,
-                timeout=self.__sftp_timeout,
-                allow_agent=False,
-                look_for_keys=False)
+    ssh.connect(
+        self.__sftp_host,
+        port=self.__sftp_port,
+        username=self.__sftp_username,
+        password=self.__sftp_password,
+        timeout=self.__sftp_timeout,
+        allow_agent=False,
+        look_for_keys=False
+    )
     return ssh.open_sftp()
 
   def upload_file(self, path_file: Path):
-    """
-    Upload a file to the SFTP server and overwrite if it already exists on the server.
-    """
     path_file = Path(path_file).resolve()
     if not path_file.exists():
       raise FileNotFoundError(f"File {path_file} does not exist.")
@@ -142,9 +144,12 @@ class SftpFileManager:
 
 
 class BrokerRequestResultManager:
+  """Manages interactions with AKTIN Broker API. The AKTIN Broker is the data source from where our data is being imported.
+
+  Handles downloading and processing of hospital data from the AKTIN Broker.
+  Uses environment variables for connection settings.
   """
-  A class for managing request results from the AKTIN Broker. The AKTIN Broker is the data source from where our data is beeing imported.
-  """
+
   __timeout = 10
 
   def __init__(self):
@@ -169,13 +174,13 @@ class BrokerRequestResultManager:
     return "/".join([self.__broker_url] + list(items))
 
   def __create_basic_header(self, mediatype: str = 'application/xml') -> dict:
-    return {'Authorization': f'Bearer {self.__admin_api_key}', 'Connection': 'keep-alive', 'Accept': mediatype}
+    return {
+      'Authorization': f'Bearer {self.__admin_api_key}',
+      'Connection': 'keep-alive',
+      'Accept': mediatype
+    }
 
   def download_latest_broker_result_by_set_tag(self, zip_target_path: Path = None, requests_tag: str = None) -> Path:
-    """
-    Creates a zip archive from a broker result by using the id of the last tagged result and requesting it.
-    :return: Path to the resulting zip archive.
-    """
     id_request = str(self.__get_id_of_latest_request_by_set_tag(requests_tag))
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
@@ -183,26 +188,19 @@ class BrokerRequestResultManager:
     return zip_file_path
 
   def __get_id_of_latest_request_by_set_tag(self, requests_tag: str = None) -> int:
-    """
-    Asks the broker for the highest request ID of a set tag.
-    """
     requests_tag = requests_tag or self.__requests_tag
     url = self.__append_to_broker_url('broker', 'request', 'filtered')
-    url = '?'.join(
-        [url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': "//tag='%s'" % requests_tag})])
+    url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': f"//tag='{requests_tag}'"})])
     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
     response.raise_for_status()
     list_request_id = [int(element.get('id')) for element in et.fromstring(response.content)]
     if not list_request_id:
-      logging.warning("No requests with tag: %s were found!" % self.__requests_tag)
+      logging.warning("No requests with tag: %s were found!", self.__requests_tag)
       sys.exit(0)
     logging.info('%d requests found (Highest Id: %d)', len(list_request_id), max(list_request_id))
     return max(list_request_id)
 
   def __export_request_result(self, id_request: str) -> str:
-    """
-    Tells the broker to aggregate request results into a temporarily downloadable file.
-    """
     logging.info('Exporting results of %s', id_request)
     url = self.__append_to_broker_url('broker', 'export', 'request-bundle', id_request)
     response = requests.post(url, headers=self.__create_basic_header('text/plain'), timeout=self.__timeout)
@@ -217,9 +215,6 @@ class BrokerRequestResultManager:
     return response
 
   def __store_broker_response_as_zip(self, response: Response, id_request: str, target_path: Path = None) -> Path:
-    """
-    Saves broker response content as a zip archive in the specified or script directory.
-    """
     target_path = target_path or Path(__file__).resolve().parent
     zip_file_path = target_path / f'result{id_request}.zip'
     logging.info("Writing results to %s", zip_file_path)
@@ -229,8 +224,10 @@ class BrokerRequestResultManager:
 
 
 class LosScriptManager:
-  """
-  Manages execution of R script for length of stay calculations.
+  """Manages R script execution for length of stay calculations.
+
+  Handles running the R script with appropriate parameters and processing
+  its output. Uses environment variables for R script settings.
   """
 
   def __init__(self):
@@ -239,9 +236,6 @@ class LosScriptManager:
     self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
 
   def execute_rscript(self, zip_file_path: Path, start_cw: str, end_cw: str) -> Path:
-    """
-    Executes R script with provided zip file and calendar weeks, returns path to results.
-    """
     zip_file_path = Path(zip_file_path).resolve()
     cmd = ['Rscript', self.__rscript_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max]
     logging.info(f"Running command: {' '.join(cmd)}")
@@ -252,9 +246,6 @@ class LosScriptManager:
     return self.__extract_result_path(output.stdout)
 
   def __extract_result_path(self, output: str) -> Path:
-    """
-    Extracts output file path from R script stdout.
-    """
     match = re.search(r'timeframe_path:(.+?)(?:$|\n)', output)
     if not match:
       raise ValueError("Could not find result path in R script output")
@@ -263,15 +254,12 @@ class LosScriptManager:
 
 
 class LosResultFileManager:
-  """
-  Manages result files for LOS calculations, including renaming and cleanup.
+  """Manages LOS calculation result files.
+
+  Handles renaming and cleanup of result files according to standardized format.
   """
 
   def rename_result_file_to_standardized_form(self, result_file_path: Path) -> Path:
-    """
-    Renames the result file to the standardized form:
-    LOS_<year of CW-3>_W<CW-3>_to_<CurrentYear>-W<CurrentCW>_<CurrentDate>-<CurrentTime>
-    """
     result_file_path = result_file_path.resolve()
     if not result_file_path.exists():
       raise FileNotFoundError(f'File {result_file_path} does not exist.')
@@ -288,7 +276,6 @@ class LosResultFileManager:
     if week > 3:
       return year, week - 3
     else:
-      # Need to get last year's total weeks
       last_year = year - 1
       last_year_weeks = datetime.date(last_year, 12, 28).isocalendar()[1]
       return last_year, last_year_weeks - (3 - week)
@@ -301,6 +288,15 @@ class LosResultFileManager:
 
 
 class LosProcessor:
+  """Main pipeline processor for Length of Stay calculations.
+
+  Coordinates the end-to-end process of:
+  1. Loading configuration
+  2. Downloading broker data
+  3. Running R script analysis
+  4. Uploading results to SFTP
+  """
+
   def __init__(self, config_path: str):
     config_path = Path(config_path).resolve()
     self.__config_manager = ConfigurationManager(config_path)
@@ -331,7 +327,10 @@ class LosProcessor:
 
 
 def main():
-  logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+  logging.basicConfig(
+      level=logging.INFO,
+      format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  )
   if len(sys.argv) < 2:
     raise SystemExit('Path to config TOML is missing!')
   processor = LosProcessor(sys.argv[1])
