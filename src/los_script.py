@@ -52,8 +52,8 @@ class ConfigurationManager:
   __required_keys = {
     'BROKER.URL', 'BROKER.API_KEY',
     'REQUESTS.TAG',
-    'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDERNAME',
-    'RSCRIPT.LOSCALCULATOR_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
+    'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDER',
+    'RSCRIPT.LOS_SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
   }
 
   def __init__(self, path_toml: Path):
@@ -107,7 +107,7 @@ class SftpFileManager:
     self.__sftp_username = os.environ['SFTP.USERNAME']
     self.__sftp_password = os.environ['SFTP.PASSWORD']
     self.__sftp_timeout = int(os.environ['SFTP.TIMEOUT'])
-    self.__sftp_foldername = Path(os.environ['SFTP.FOLDERNAME'])
+    self.__sftp_folder = Path(os.environ['SFTP.FOLDER'])
     self.__connection = self.__connect_to_sftp()
 
   def __connect_to_sftp(self) -> paramiko.sftp_client.SFTPClient:
@@ -129,16 +129,16 @@ class SftpFileManager:
     if not path_file.exists():
       raise FileNotFoundError(f"File {path_file} does not exist.")
     logging.info('Sending %s to SFTP server', path_file)
-    self.__connection.put(str(path_file), str(self.__sftp_foldername / path_file.name))
+    self.__connection.put(str(path_file), str(self.__sftp_folder / path_file.name))
 
   def list_files(self) -> list:
     logging.info('Listing files from SFTP server')
-    return self.__connection.listdir(str(self.__sftp_foldername))
+    return self.__connection.listdir(str(self.__sftp_folder))
 
   def delete_file(self, filename: str):
     logging.info('Deleting %s from SFTP server', filename)
     try:
-      self.__connection.remove(str(self.__sftp_foldername / filename))
+      self.__connection.remove(str(self.__sftp_folder / filename))
     except FileNotFoundError:
       logging.info('%s could not be found', filename)
 
@@ -231,13 +231,13 @@ class LosScriptManager:
   """
 
   def __init__(self):
-    self.__rscript_path = Path(os.environ['RSCRIPT.SCRIPT_PATH']).resolve()
+    self.__los_script_path = Path(os.environ['RSCRIPT.LOS_SCRIPT_PATH']).resolve()
     self.__los_max = os.environ['RSCRIPT.LOS_MAX']
     self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
 
   def execute_rscript(self, zip_file_path: Path, start_cw: str, end_cw: str) -> Path:
     zip_file_path = Path(zip_file_path).resolve()
-    cmd = ['Rscript', self.__rscript_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max]
+    cmd = ['Rscript', self.__los_script_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max]
     logging.info(f"Running command: {' '.join(cmd)}")
     output = subprocess.run(cmd, capture_output=True, text=True)
     if output.returncode != 0:

@@ -16,7 +16,7 @@ from src.los_script import LosScriptManager
 @pytest.fixture(scope="function", autouse=True)
 def setup_env():
   os.environ.update({
-    'RSCRIPT.SCRIPT_PATH': str(Path(__file__).parent.parent.parent / 'src/resources/LOSCalculator.R'),
+    'RSCRIPT.LOS_SCRIPT_PATH': str(Path(__file__).parent.parent.parent / 'src/resources/LOSCalculator.R'),
     'RSCRIPT.LOS_MAX': "410",
     'RSCRIPT.ERROR_MAX': "25"
   })

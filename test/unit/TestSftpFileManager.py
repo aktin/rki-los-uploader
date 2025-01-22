@@ -65,7 +65,7 @@ X11Forwarding no
     'SFTP.USERNAME': USER_NAME,
     'SFTP.PASSWORD': USER_PASSWORD,
     'SFTP.TIMEOUT': '30',
-    'SFTP.FOLDERNAME': SFTP_DIRNAME
+    'SFTP.FOLDER': SFTP_DIRNAME
   })
   yield {'container': container, 'temp_dir': temp_dir}
   print(container.logs().decode())
