@@ -30,7 +30,7 @@ TIMEOUT = "30"
 FOLDERNAME = "test-folder"
 
 [RSCRIPT]
-SCRIPT_PATH = "/path/to/script"
+LOSCALCULATOR_PATH = "/path/to/script"
 LOS_MAX = "30"
 ERROR_MAX = "0.05"
 """
