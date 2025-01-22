@@ -227,8 +227,9 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   timeframe$Abweichung <- timeframe$weighted_los - timeframe$LOS_vor_Pand
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
-  calendarweek <- getFirstCalendarWeekOfCurrentMonth()
-  timeframe <- timeframe %>% dplyr::filter(last_cw_last_month < cw & cw < first_cw_next_month)# todo rework, why only last and not second last, why manually. maybe a whitelist approach?
+  conflicts_prefer(base::min)
+  timeframe <- timeframe %>% dplyr::filter((last_cw_last_month < cw & calendarweek_year >= 2023) |
+                (first_cw_next_month > cw & calendarweek_year <= 2024))
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
   colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
