@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 @AUTHOR: Alexander Kombeiz (akombeiz@ukaachen.de)
-@VERSION=1.1
 """
 
 import os
-import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +12,7 @@ from src.los_script import ConfigurationManager
 
 
 @pytest.fixture
-def valid_toml_content():
+def valid_toml_content() -> str:
   return """
 [BROKER]
 URL = "test-url"
@@ -32,15 +31,13 @@ FOLDERNAME = "test-folder"
 
 [RSCRIPT]
 SCRIPT_PATH = "/path/to/script"
-START_CW = "1"
-END_CW = "52"
 LOS_MAX = "30"
 ERROR_MAX = "0.05"
 """
 
 
 @pytest.fixture
-def invalid_toml_content():
+def invalid_toml_content() -> str:
   return """
 [BROKER]
 URL = "test-url"
@@ -49,18 +46,12 @@ API_KEY = "test-key"
 
 
 @pytest.fixture
-def config_paths(valid_toml_content, invalid_toml_content):
-  with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as valid_file:
-    valid_file.write(valid_toml_content)
-  with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as invalid_file:
-    invalid_file.write(invalid_toml_content)
-  paths = {
-    'valid': valid_file.name,
-    'invalid': invalid_file.name
-  }
-  yield paths
-  os.unlink(paths['valid'])
-  os.unlink(paths['invalid'])
+def config_paths(valid_toml_content, invalid_toml_content, tmp_path) -> dict:
+  valid_path = tmp_path / "valid.toml"
+  invalid_path = tmp_path / "invalid.toml"
+  valid_path.write_text(valid_toml_content)
+  invalid_path.write_text(invalid_toml_content)
+  return {'valid': valid_path, 'invalid': invalid_path}
 
 
 @pytest.fixture(autouse=True)
@@ -70,10 +61,7 @@ def cleanup_env():
   """
   yield
   env_prefixes = ['BROKER', 'REQUESTS', 'SFTP', 'MISC', 'RSCRIPT']
-  keys_to_remove = [
-    key for key in os.environ
-    if any(key.startswith(prefix) for prefix in env_prefixes)
-  ]
+  keys_to_remove = [key for key in os.environ if any(key.startswith(prefix) for prefix in env_prefixes)]
   for key in keys_to_remove:
     del os.environ[key]
 
@@ -85,10 +73,10 @@ def test_valid_config_loads_successfully(config_paths):
 
 
 def test_missing_file_raises_error():
-  with pytest.raises(SystemExit, match='invalid TOML file path'):
-    ConfigurationManager('nonexistent.toml')
+  with pytest.raises(SystemExit, match='Invalid TOML file path'):
+    ConfigurationManager(Path('nonexistent.toml'))
 
 
 def test_missing_required_keys_raises_error(config_paths):
-  with pytest.raises(SystemExit, match='following keys are missing'):
+  with pytest.raises(SystemExit, match='Missing keys in config file'):
     ConfigurationManager(config_paths['invalid'])
