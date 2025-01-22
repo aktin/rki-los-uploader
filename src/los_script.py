@@ -30,6 +30,7 @@ import subprocess
 import sys
 import urllib
 import xml.etree.ElementTree as et
+import zipfile
 from pathlib import Path
 
 import paramiko
@@ -256,20 +257,22 @@ class LosScriptManager:
 class LosResultFileManager:
   """Manages LOS calculation result files.
 
-  Handles renaming and cleanup of result files according to standardized format.
+  Handles renaming, zipping and cleanup of result files according to standardized format.
+  Can create zip archives with standardized folder structure for result files.
   """
 
-  def rename_result_file_to_standardized_form(self, result_file_path: Path) -> Path:
-    result_file_path = result_file_path.resolve()
-    if not result_file_path.exists():
-      raise FileNotFoundError(f'File {result_file_path} does not exist.')
+  def rename_result_file_to_standardized_form(self, file_path: Path) -> Path:
+    file_path = file_path.resolve()
+    logging.info("Renaming result file to standardized form")
+    if not file_path.exists():
+      raise FileNotFoundError(f'File {file_path} does not exist.')
     now = datetime.datetime.now()
     current_year, current_week, _ = now.isocalendar()
     adjusted_year, adjusted_week = self.calculate_cw_minus_three(current_year, current_week)
     timestamp = now.strftime('%Y%m%d-%H%M%S')
     new_filename = f'LOS_{adjusted_year}-W{adjusted_week:02d}_to_{current_year}-W{current_week:02d}_{timestamp}'
-    new_file_path = result_file_path.with_name(new_filename + result_file_path.suffix)
-    result_file_path.rename(new_file_path)
+    new_file_path = file_path.with_name(new_filename + file_path.suffix)
+    file_path.rename(new_file_path)
     return new_file_path
 
   def calculate_cw_minus_three(self, year: int, week: int) -> tuple[int, int]:
@@ -279,6 +282,22 @@ class LosResultFileManager:
       last_year = year - 1
       last_year_weeks = datetime.date(last_year, 12, 28).isocalendar()[1]
       return last_year, last_year_weeks - (3 - week)
+
+  def zip_result_file(self, file_path: Path) -> Path:
+    file_path = file_path.resolve()
+    logging.info("Zipping result file")
+    if not file_path.exists():
+      raise FileNotFoundError(f'File {file_path} does not exist.')
+    folder_name = file_path.stem
+    folder_path = file_path.parent / folder_name
+    folder_path.mkdir(exist_ok=True)
+    shutil.copy2(file_path, folder_path / file_path.name)
+    zip_path = file_path.with_suffix('.zip')
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+      for file in folder_path.rglob('*'):
+        zf.write(file, file.relative_to(folder_path.parent))
+    shutil.rmtree(folder_path)
+    return zip_path
 
   def clear_rscript_data(self, result_file_path: Path):
     result_dir = result_file_path.resolve().parent
@@ -310,13 +329,14 @@ class LosProcessor:
       now = datetime.datetime.now()
       current_year, current_week, _ = now.isocalendar()
       _, adjusted_week = self.__result_manager.calculate_cw_minus_three(current_year, current_week)
-      zip_path = self.__broker_manager.download_latest_broker_result_by_set_tag()
-      result_path = self.__los_script.execute_rscript(zip_path, str(current_week), str(adjusted_week))
-      renamed_path = self.__result_manager.rename_result_file_to_standardized_form(result_path)
-      self.__clean_and_upload_sftp(renamed_path)
-      self.__result_manager.clear_rscript_data(renamed_path)
+      raw_data_zip = self.__broker_manager.download_latest_broker_result_by_set_tag()
+      processed_data = self.__los_script.execute_rscript(raw_data_zip, str(current_week), str(adjusted_week))
+      renamed_data = self.__result_manager.rename_result_file_to_standardized_form(processed_data)
+      zipped_data = self.__result_manager.zip_result_file(renamed_data)
+      self.__clean_and_upload_sftp(zipped_data)
+      self.__result_manager.clear_rscript_data(zipped_data)
     except Exception as e:
-      logging.error(f"Error during LOS processing: {e}")
+      logging.error(f"Error during LOS processing: {e}", exc_info=True)
       raise
 
   def __clean_and_upload_sftp(self, file_path: Path):
