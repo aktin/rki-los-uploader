@@ -180,7 +180,6 @@ class BrokerRequestResultManager:
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
     zip_file_path = self.__store_broker_response_as_zip(result_stream, id_request, zip_target_path)
-    logging.info('Download finished')
     return zip_file_path
 
   def __get_id_of_latest_request_by_set_tag(self, requests_tag: str = None) -> int:

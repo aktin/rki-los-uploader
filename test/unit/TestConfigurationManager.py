@@ -31,8 +31,6 @@ FOLDERNAME = "test-folder"
 
 [RSCRIPT]
 SCRIPT_PATH = "/path/to/script"
-START_CW = "1"
-END_CW = "52"
 LOS_MAX = "30"
 ERROR_MAX = "0.05"
 """
