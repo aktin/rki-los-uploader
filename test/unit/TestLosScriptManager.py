@@ -72,7 +72,7 @@ def create_test_zip(zip_path: Path, test_data: list[str]) -> Path:
   """
   with zipfile.ZipFile(zip_path, "w") as zf:
     for i, clinic_data in enumerate(test_data):
-      clinic_zip_name = f"{i}_result.zip"
+      clinic_zip_name = f"{i+1}_result.zip"
       clinic_zip_path = zip_path.parent / clinic_zip_name
       with zipfile.ZipFile(clinic_zip_path, "w") as clinic_zf:
         clinic_zf.writestr("case_data.txt", clinic_data)

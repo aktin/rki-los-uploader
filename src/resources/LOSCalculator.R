@@ -35,7 +35,6 @@ conflicts_prefer(dplyr::filter)
 unpackZip <- function(inDir, exDir) {
   tryCatch({
     unzip(inDir, exdir = exDir)
-    # print(paste("Data from", inDir, "successfully unpacked in:", exDir))
     return(exDir)
   }, error = function(e) {
     warning(paste("An error occurred unpacking the data:", e$message))
@@ -57,7 +56,6 @@ unpackClinicResult <- function(exDir, file_numbers) {
     }
     tryCatch({
       unzip(path_zipped, exdir = path_unzipped)
-      #print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
     }, error = function(e) {
       warning(paste("An error occurred unpacking the result sets:", e$message))
     })
@@ -126,7 +124,7 @@ performAnalysis <- function(case_data) {
   db <- filterCases(filledCaseData)
   los <- filterLos(db)
   los_valid <- filterLosValid(los, num_of_cases)
-  complete_db_Pand <- joinClinics(db, los_valid)
+  complete_db_Pand <- left_join(los_valid, db)
   timeframe <- calculateTimeframe(complete_db_Pand, los)
   return(timeframe)
 }
@@ -197,9 +195,6 @@ filterLos <- function(db) {
 #' @param num_of_cases: clinic numbers
 filterLosValid <- function(los, num_of_cases) {
   los <- left_join(los, num_of_cases, by="clinic")
-  for(i in 1:nrow(los)) {
-    los$Freq[los$clinic==i] <- los$Freq[los$clinic==i]
-  }
   los$np <- los$Freq - los$n
   los$np_prozent <- (los$np / los$Freq) * 100
   los <- los %>% dplyr::filter(np_prozent < max_accepted_error)
@@ -210,26 +205,22 @@ filterLosValid <- function(los, num_of_cases) {
   return(los)
 }
 
-joinClinics <- function(db, los_valid) {
-  complete_db_Pand <- left_join(los_valid, db)
-  complete_db_Pand <- complete_db_Pand %>% dplyr::filter(clinic != 46)
-  return(complete_db_Pand)
-}
-
 calculateTimeframe <- function(complete_db_Pand, los) {
   clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
   timeframe <- complete_db_Pand %>%
     group_by(calendarweek_year, cw) %>%
-    summarise(weighted_los = mean(los, na.rm = TRUE))
+    summarise(weighted_los = weighted.mean(los, clinic, na.rm = TRUE))
   case_num <- calculateCaseNumber(complete_db_Pand)
   timeframe  <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
   timeframe$Abweichung <- timeframe$weighted_los - timeframe$LOS_vor_Pand
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
+  timeframe$calendarweek_year <- as.numeric(timeframe$calendarweek_year)
+  timeframe$cw <- as.numeric(timeframe$cw)
   conflicts_prefer(base::min)
-  timeframe <- timeframe %>% dplyr::filter((last_cw_last_month < cw & calendarweek_year >= 2023) |
-                (first_cw_next_month > cw & calendarweek_year <= 2024))
+    timeframe <- timeframe %>% dplyr::filter((last_cw_last_month < cw & calendarweek_year >= min(timeframe$calendarweek_year)) |
+                (first_cw_next_month > cw & calendarweek_year <= max(timeframe$calendarweek_year)))
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
   colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
