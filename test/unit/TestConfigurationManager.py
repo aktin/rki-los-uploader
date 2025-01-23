@@ -27,10 +27,10 @@ PORT = "22"
 USERNAME = "test-user"
 PASSWORD = "test-pass"
 TIMEOUT = "30"
-FOLDERNAME = "test-folder"
+FOLDER = "test-folder"
 
 [RSCRIPT]
-SCRIPT_PATH = "/path/to/script"
+LOS_SCRIPT_PATH = "/path/to/script"
 LOS_MAX = "30"
 ERROR_MAX = "0.05"
 """

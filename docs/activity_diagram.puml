@@ -1,0 +1,42 @@
+@startuml
+participant "TOML" as toml
+participant "LOS Script" as python
+participant "AKTIN Broker" as broker
+participant "Temp Directory" as tmp
+participant "R Script" as rscript
+participant "SFTP Server" as sftp
+
+python -> toml: Load configuration
+activate toml
+toml --> python: Return environment variables
+deactivate toml
+
+python -> broker: Request latest dataset
+activate broker
+broker --> python: Return latest dataset
+deactivate broker
+
+python -> tmp: Create temporary directory
+activate tmp
+python -> tmp: Save latest dataset
+
+python -> rscript: Execute script
+activate rscript
+rscript -> tmp: Read latest dataset
+tmp --> rscript: Return dataset
+rscript -> rscript: Calculate LOS
+rscript -> tmp: Store result
+rscript --> python: Notify completion
+deactivate rscript
+
+python -> tmp: Read R-script result
+tmp --> python: Return result
+
+python -> sftp: Upload result
+activate sftp
+sftp --> python: Confirm upload
+deactivate sftp
+
+python -> tmp: Clean temporary files
+deactivate tmp
+@enduml
