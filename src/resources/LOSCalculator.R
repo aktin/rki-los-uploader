@@ -278,16 +278,6 @@ tablenameToEng <- function(var) {
   return(m[var])
 }
 
-getHospitalNumbers <- function(path) {
-  file_list <- list.files(path = path)
-  zip_files <- file_list[grep("\\.zip", file_list)]
-  hospital_numbers <- list()
-  for(filename in zip_files) {
-    hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
-  }
-  return(hospital_numbers)
-}
-
 last_cw_last_month <- NULL
 first_cw_next_month <- NULL
 max_accepted_los <- NULL
@@ -301,6 +291,8 @@ main <- function(){
     assign("first_cw_next_month", args[3], envir = .GlobalEnv)
     assign("max_accepted_los", as.numeric(args[4]), envir = .GlobalEnv) # in min, used to exclude data sources with an mean length of stay of i mins and higher
     assign("max_accepted_error", as.numeric(args[5]), envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
+    assign("file_numbers", args[6], envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
+    file_numbers <- as.integer(unlist(strsplit(file_numbers, ",")))
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 
@@ -313,7 +305,6 @@ main <- function(){
     }
 
     unpackZip(filepath, exDir)
-    file_numbers <- getHospitalNumbers(exDir)
     unpackClinicResult(exDir, file_numbers)
     case_data <- processFiles(exDir, file_numbers)
     if(!is.null(case_data)) {

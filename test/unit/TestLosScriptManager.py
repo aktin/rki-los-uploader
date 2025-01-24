@@ -21,7 +21,8 @@ def setup_env():
   os.environ.update({
     'RSCRIPT.LOS_SCRIPT_PATH': str(Path(__file__).parent.parent.parent / 'src/resources/LOSCalculator.R'),
     'RSCRIPT.LOS_MAX': "410",
-    'RSCRIPT.ERROR_MAX': "25"
+    'RSCRIPT.ERROR_MAX': "25",
+    'RSCRIPT.CLINIC_NUMS': "1,2,3,4,5",
   })
 
 

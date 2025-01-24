@@ -237,10 +237,11 @@ class LosScriptManager:
     self.__los_script_path = Path(os.environ['RSCRIPT.LOS_SCRIPT_PATH']).resolve()
     self.__los_max = os.environ['RSCRIPT.LOS_MAX']
     self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
+    self.__clinic_nums = os.environ['RSCRIPT.CLINIC_NUMS']
 
   def execute_rscript(self, zip_file_path: Path, start_cw: str, end_cw: str) -> Path:
     zip_file_path = Path(zip_file_path).resolve()
-    cmd = ['Rscript', self.__los_script_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max]
+    cmd = ['Rscript', self.__los_script_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max, self.__clinic_nums]
     logging.info("Executing R script command='%s'", ' '.join(cmd))
     output = subprocess.run(cmd, capture_output=True, text=True)
     if output.returncode != 0:
