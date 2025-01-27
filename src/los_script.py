@@ -54,7 +54,7 @@ class ConfigurationManager:
     'BROKER.URL', 'BROKER.API_KEY',
     'REQUESTS.TAG',
     'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDER',
-    'RSCRIPT.LOS_SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX'
+    'RSCRIPT.LOS_SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX', 'RSCRIPT.CLINIC_NUMS'
   }
 
   def __init__(self, path_toml: Path):
@@ -92,7 +92,14 @@ class ConfigurationManager:
     if missing_keys:
       raise SystemExit(f'Missing keys in config file: {missing_keys}')
     for key, value in config.items():
+      if key == 'RSCRIPT.CLINIC_NUMS':
+        value = self.__parse_clinic_nums(value)
       os.environ[key] = str(value)
+
+  def __parse_clinic_nums(self, ranges_str: str):
+    ranges = (r.split('-') for r in ranges_str.split(','))
+    numbers = {n for r in ranges for n in range(int(r[0]), int(r[-1]) + 1)}
+    return ','.join(map(str, sorted(numbers)))
 
 
 class SftpFileManager:
@@ -182,7 +189,6 @@ class BrokerRequestResultManager:
     }
 
   def download_latest_broker_result_by_set_tag(self, zip_target_path: Path = None, requests_tag: str = None) -> Path:
-    logging.info("Fetching requests with tag=%s", requests_tag)
     id_request = str(self.__get_id_of_latest_request_by_set_tag(requests_tag))
     uuid = self.__export_request_result(id_request)
     result_stream = self.__download_exported_result(uuid)
@@ -191,6 +197,7 @@ class BrokerRequestResultManager:
 
   def __get_id_of_latest_request_by_set_tag(self, requests_tag: str = None) -> int:
     requests_tag = requests_tag or self.__requests_tag
+    logging.info("Fetching requests with tag=%s", requests_tag)
     url = self.__append_to_broker_url('broker', 'request', 'filtered')
     url = '?'.join([url, urllib.parse.urlencode({'type': 'application/vnd.aktin.query.request+xml', 'predicate': f"//tag='{requests_tag}'"})])
     response = requests.get(url, headers=self.__create_basic_header(), timeout=self.__timeout)
@@ -241,7 +248,8 @@ class LosScriptManager:
 
   def execute_rscript(self, zip_file_path: Path, start_cw: str, end_cw: str) -> Path:
     zip_file_path = Path(zip_file_path).resolve()
-    cmd = ['Rscript', self.__los_script_path.as_posix(), zip_file_path.as_posix(), start_cw, end_cw, self.__los_max, self.__error_max, self.__clinic_nums]
+    cmd = ['Rscript', self.__los_script_path.as_posix(), zip_file_path.as_posix(),
+           start_cw, end_cw, self.__los_max, self.__error_max, self.__clinic_nums]
     logging.info("Executing R script command='%s'", ' '.join(cmd))
     output = subprocess.run(cmd, capture_output=True, text=True)
     if output.returncode != 0:
@@ -335,7 +343,7 @@ class LosProcessor:
       current_year, current_week, _ = now.isocalendar()
       _, adjusted_week = self.__result_manager.calculate_cw_minus_three(current_year, current_week)
       raw_data_zip = self.__broker_manager.download_latest_broker_result_by_set_tag()
-      processed_data = self.__los_script.execute_rscript(raw_data_zip, str(current_week), str(adjusted_week))
+      processed_data = self.__los_script.execute_rscript(raw_data_zip, str(adjusted_week), str(current_week))
       renamed_data = self.__result_manager.rename_result_file_to_standardized_form(processed_data)
       zipped_data = self.__result_manager.zip_result_file(renamed_data)
       self.__clean_and_upload_sftp(zipped_data)

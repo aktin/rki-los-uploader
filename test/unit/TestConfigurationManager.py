@@ -33,6 +33,7 @@ FOLDER = "test-folder"
 LOS_SCRIPT_PATH = "/path/to/script"
 LOS_MAX = "30"
 ERROR_MAX = "0.05"
+CLINIC_NUMS="1-5,7,9-10"
 """
 
 
@@ -70,6 +71,7 @@ def test_valid_config_loads_successfully(config_paths):
   ConfigurationManager(config_paths['valid'])
   assert os.environ['BROKER.URL'] == 'test-url'
   assert os.environ['SFTP.HOST'] == 'test-host'
+  assert os.environ['RSCRIPT.CLINIC_NUMS'] == '1,2,3,4,5,7,9,10'
 
 
 def test_missing_file_raises_error():

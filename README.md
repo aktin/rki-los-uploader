@@ -51,8 +51,9 @@ Create a `config.toml` outside project directory:
 |          | TIMEOUT         | Connection timeout (seconds)                                                                           | "25"                           |
 |          | FOLDER          | Target upload directory on SFTP server                                                                 | "test"                         |
 | RSCRIPT  | LOS_SCRIPT_PATH | Absolute path to LOSCalculator.R                                                                       | "/path/to/LOSCalculator.R"     |
-| RSCRIPT  | LOS_MAX         | Maximum Length Of Stay threshold before a case is excluded from calculation                            | "30"                           |
-| RSCRIPT  | ERROR_MAX       | Maximum percentage of excluded cases allowed for a hospital before it is excluded from the calculation | "0.05"                         |
+|          | LOS_MAX         | Maximum Length Of Stay threshold before a case is excluded from calculation                            | "30"                           |
+|          | ERROR_MAX       | Maximum percentage of excluded cases allowed for a hospital before it is excluded from the calculation | "0.05"                         |
+|          | CLINIC_NUMS     | Defines the whitelist of clinic IDs for Rscript processing, supporting both individual IDs and ranges  | "1-7,9,10-12"                  |
 
 ## Usage
 
