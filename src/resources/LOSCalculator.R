@@ -219,8 +219,8 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   timeframe$calendarweek_year <- as.numeric(timeframe$calendarweek_year)
   timeframe$cw <- as.numeric(timeframe$cw)
   conflicts_prefer(base::min)
-    timeframe <- timeframe %>% dplyr::filter((last_cw_last_month < cw & calendarweek_year >= min(timeframe$calendarweek_year)) |
-                (first_cw_next_month > cw & calendarweek_year <= max(timeframe$calendarweek_year)))
+  timeframe <- timeframe[-c(1, nrow(timeframe)), ]
+  timeframe$cw <- sprintf("%02d", timeframe$cw)
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
   colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
@@ -312,12 +312,12 @@ main <- function(){
     } else {
       timeframe <- data.frame(message = "Error: No Data found in case_data files!")
     print("case_data is NULL, check the given table for missing columns.")
-    }
-    
-    # save analysis result
-    timeframe_path <- paste0(exDir, "/timeframe.csv")
-    write.csv(timeframe, timeframe_path, row.names = FALSE)
-    print(paste0("timeframe_path:",timeframe_path))
+  }
+
+  # save analysis result
+  timeframe_path <- paste0(exDir, "/timeframe.csv")
+  write.csv(timeframe, timeframe_path, row.names = FALSE, quote = FALSE)
+  print(paste0("timeframe_path:",timeframe_path))
 }
 
 main()
