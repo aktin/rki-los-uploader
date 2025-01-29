@@ -221,11 +221,9 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   conflicts_prefer(base::min)
 
   # filter all cases after start cw
-  timeframe <- timeframe[(timeframe$calendarweek_year > start_year) |
-                             (timeframe$calendarweek_year == start_year & timeframe$cw >= start_cw_last_month), ]
+  timeframe <- timeframe %>% filter(calendarweek_year > start_year | (calendarweek_year == start_year & cw >= start_cw_last_month))
   # filter all cases before end cw
-  timeframe <- timeframe[(timeframe$calendarweek_year < end_year) |
-                           (timeframe$calendarweek_year == end_year & timeframe$cw <= end_cw_next_month), ]
+  timeframe <- timeframe %>% filter(calendarweek_year < end_year | (calendarweek_year == end_year & cw <= end_cw_next_month))
 
   timeframe$cw <- sprintf("%02d", timeframe$cw)
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
@@ -296,10 +294,10 @@ main <- function(){
     args <- commandArgs(trailingOnly=TRUE)
     # Access the path variable passed from Python
     filepath <- args[1]
-    assign("start_year", args[2], envir = .GlobalEnv)
-    assign("last_cw_last_month", args[3], envir = .GlobalEnv)
-    assign("end_year", args[4], envir = .GlobalEnv)
-    assign("first_cw_next_month", args[5], envir = .GlobalEnv)
+    assign("start_year", as.numeric(args[2]), envir = .GlobalEnv)
+    assign("start_cw_last_month", as.numeric(args[3]), envir = .GlobalEnv)
+    assign("end_year", as.numeric(args[4]), envir = .GlobalEnv)
+    assign("end_cw_next_month", as.numeric(args[5]), envir = .GlobalEnv)
     assign("max_accepted_los", as.numeric(args[6]), envir = .GlobalEnv) # in min, used to exclude data sources with an mean length of stay of i mins and higher
     assign("max_accepted_error", as.numeric(args[7]), envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
     assign("file_numbers", args[8], envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
