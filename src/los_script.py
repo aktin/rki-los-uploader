@@ -246,10 +246,10 @@ class LosScriptManager:
     self.__error_max = os.environ['RSCRIPT.ERROR_MAX']
     self.__clinic_nums = os.environ['RSCRIPT.CLINIC_NUMS']
 
-  def execute_rscript(self, zip_file_path: Path, start_cw: str, end_cw: str) -> Path:
+  def execute_rscript(self, zip_file_path: Path, start_year: str, start_cw: str, end_year: str, end_cw: str) -> Path:
     zip_file_path = Path(zip_file_path).resolve()
     cmd = ['Rscript', self.__los_script_path.as_posix(), zip_file_path.as_posix(),
-           start_cw, end_cw, self.__los_max, self.__error_max, self.__clinic_nums]
+           start_year, start_cw, end_year, end_cw, self.__los_max, self.__error_max, self.__clinic_nums]
     logging.info("Executing R script command='%s'", ' '.join(cmd))
     output = subprocess.run(cmd, capture_output=True, text=True)
     if output.returncode != 0:
@@ -279,20 +279,21 @@ class LosResultFileManager:
       raise FileNotFoundError(f'File {file_path} does not exist.')
     now = datetime.datetime.now()
     current_year, current_week, _ = now.isocalendar()
-    adjusted_year, adjusted_week = self.calculate_cw_minus_three(current_year, current_week)
+    end_year, end_week = self.calculate_cw_minus_n(current_year, current_week, 1)
+    start_year, start_week = self.calculate_cw_minus_n(end_year, end_week, 3)
     timestamp = now.strftime('%Y%m%d-%H%M%S')
-    new_filename = f'LOS_{adjusted_year}-W{adjusted_week:02d}_to_{current_year}-W{current_week:02d}_{timestamp}'
+    new_filename = f'LOS_{start_year}-W{start_week:02d}_to_{end_year}-W{end_week:02d}_{timestamp}'
     new_file_path = file_path.with_name(new_filename + file_path.suffix)
     file_path.rename(new_file_path)
     return new_file_path
 
-  def calculate_cw_minus_three(self, year: int, week: int) -> tuple[int, int]:
-    if week > 3:
-      return year, week - 3
+  def calculate_cw_minus_n(self, year: int, week: int, n: int) -> tuple[int, int]:
+    if week > n:
+      return year, week - n
     else:
       last_year = year - 1
       last_year_weeks = datetime.date(last_year, 12, 28).isocalendar()[1]
-      return last_year, last_year_weeks - (3 - week)
+      return last_year, last_year_weeks - (n - week)
 
   def zip_result_file(self, file_path: Path) -> Path:
     file_path = file_path.resolve()
@@ -341,9 +342,10 @@ class LosProcessor:
     try:
       now = datetime.datetime.now()
       current_year, current_week, _ = now.isocalendar()
-      _, adjusted_week = self.__result_manager.calculate_cw_minus_three(current_year, current_week)
+      end_year, end_week = self.__result_manager.calculate_cw_minus_n(current_year, current_week, 1)
+      start_year, start_week = self.__result_manager.calculate_cw_minus_n(end_year, end_week, 3)
       raw_data_zip = self.__broker_manager.download_latest_broker_result_by_set_tag()
-      processed_data = self.__los_script.execute_rscript(raw_data_zip, str(adjusted_week), str(current_week))
+      processed_data = self.__los_script.execute_rscript(raw_data_zip, str(start_year), str(start_week), str(end_year), str(end_week))
       renamed_data = self.__result_manager.rename_result_file_to_standardized_form(processed_data)
       zipped_data = self.__result_manager.zip_result_file(renamed_data)
       self.__clean_and_upload_sftp(zipped_data)
