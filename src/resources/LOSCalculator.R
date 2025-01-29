@@ -219,7 +219,14 @@ calculateTimeframe <- function(complete_db_Pand, los) {
   timeframe$calendarweek_year <- as.numeric(timeframe$calendarweek_year)
   timeframe$cw <- as.numeric(timeframe$cw)
   conflicts_prefer(base::min)
-  timeframe <- timeframe[-c(1, nrow(timeframe)), ]
+
+  # filter all cases after start cw
+  timeframe <- timeframe[(timeframe$calendarweek_year > start_year) |
+                             (timeframe$calendarweek_year == start_year & timeframe$cw >= start_cw_last_month), ]
+  # filter all cases before end cw
+  timeframe <- timeframe[(timeframe$calendarweek_year < end_year) |
+                           (timeframe$calendarweek_year == end_year & timeframe$cw <= end_cw_next_month), ]
+
   timeframe$cw <- sprintf("%02d", timeframe$cw)
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
@@ -278,8 +285,10 @@ tablenameToEng <- function(var) {
   return(m[var])
 }
 
-last_cw_last_month <- NULL
-first_cw_next_month <- NULL
+start_cw_last_month <- NULL
+end_cw_next_month <- NULL
+start_year <- NULL
+end_year <- NULL
 max_accepted_los <- NULL
 max_accepted_error <- NULL
 
@@ -287,11 +296,13 @@ main <- function(){
     args <- commandArgs(trailingOnly=TRUE)
     # Access the path variable passed from Python
     filepath <- args[1]
-    assign("last_cw_last_month", args[2], envir = .GlobalEnv)
-    assign("first_cw_next_month", args[3], envir = .GlobalEnv)
-    assign("max_accepted_los", as.numeric(args[4]), envir = .GlobalEnv) # in min, used to exclude data sources with an mean length of stay of i mins and higher
-    assign("max_accepted_error", as.numeric(args[5]), envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
-    assign("file_numbers", args[6], envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
+    assign("start_year", args[2], envir = .GlobalEnv)
+    assign("last_cw_last_month", args[3], envir = .GlobalEnv)
+    assign("end_year", args[4], envir = .GlobalEnv)
+    assign("first_cw_next_month", args[5], envir = .GlobalEnv)
+    assign("max_accepted_los", as.numeric(args[6]), envir = .GlobalEnv) # in min, used to exclude data sources with an mean length of stay of i mins and higher
+    assign("max_accepted_error", as.numeric(args[7]), envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
+    assign("file_numbers", args[8], envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
     file_numbers <- as.integer(unlist(strsplit(file_numbers, ",")))
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
