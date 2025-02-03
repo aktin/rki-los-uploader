@@ -47,6 +47,7 @@ class ConfigurationManager:
 
   Attributes:
       __required_keys (set): Set of configuration keys that must be present
+      __optional_keys (set): Set of optional configuration keys
   """
 
   __required_keys = {
@@ -55,6 +56,8 @@ class ConfigurationManager:
     'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDER',
     'RSCRIPT.LOS_SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX', 'RSCRIPT.CLINIC_NUMS'
   }
+
+  __optional_keys = {'REQUESTS_CA_BUNDLE'}
 
   def __init__(self, path_toml: Path):
     self.__verify_and_load_toml(path_toml)
@@ -90,10 +93,12 @@ class ConfigurationManager:
     missing_keys = self.__required_keys - loaded_keys
     if missing_keys:
       raise SystemExit(f'Missing keys in config file: {missing_keys}')
-    for key, value in config.items():
-      if key == 'RSCRIPT.CLINIC_NUMS':
-        value = self.__parse_clinic_nums(value)
-      os.environ[key] = str(value)
+    for key in self.__required_keys | self.__optional_keys:
+      if key in config:
+        value = config[key]
+        if key == 'RSCRIPT.CLINIC_NUMS':
+          value = self.__parse_clinic_nums(value)
+        os.environ[key] = str(value)
 
   def __parse_clinic_nums(self, ranges_str: str):
     ranges = (r.split('-') for r in ranges_str.split(','))

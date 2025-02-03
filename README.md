@@ -39,21 +39,24 @@ export PATH=$PATH:/usr/lib/R
 
 Create a `config.toml` outside project directory:
 
-| Section  | Key             | Description                                                                                            | Example                        |
-|----------|-----------------|--------------------------------------------------------------------------------------------------------|--------------------------------|
-| BROKER   | URL             | URL to AKTIN Broker                                                                                    | "localhost:8080/aktin-broker/" |
-|          | API_KEY         | Admin Authentication key                                                                               | "api_key"                      |
-| REQUESTS | TAG             | Tag to filter AKTIN requests by                                                                        | "test"                         |
-| SFTP     | HOST            | SFTP server address                                                                                    | "127.0.0.1"                    |
-|          | PORT            | SFTP port                                                                                              | "22"                           |
-|          | USERNAME        | SFTP username                                                                                          | "user"                         |
-|          | PASSWORD        | SFTP password                                                                                          | "pass"                         |
-|          | TIMEOUT         | Connection timeout (seconds)                                                                           | "25"                           |
-|          | FOLDER          | Target upload directory on SFTP server                                                                 | "test"                         |
-| RSCRIPT  | LOS_SCRIPT_PATH | Absolute path to LOSCalculator.R                                                                       | "/path/to/LOSCalculator.R"     |
-|          | LOS_MAX         | Maximum Length Of Stay threshold before a case is excluded from calculation                            | "30"                           |
-|          | ERROR_MAX       | Maximum percentage of excluded cases allowed for a hospital before it is excluded from the calculation | "0.05"                         |
-|          | CLINIC_NUMS     | Defines the whitelist of clinic IDs for Rscript processing, supporting both individual IDs and ranges  | "1-7,9,10-12"                  |
+#TODO
+
+| Section  | Key                | Description                                                                                                                                                                          | Example                        |
+|----------|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------|
+| BROKER   | URL                | URL to AKTIN Broker                                                                                                                                                                  | "localhost:8080/aktin-broker/" |
+|          | API_KEY            | Admin Authentication key                                                                                                                                                             | "api_key"                      |
+| REQUESTS | TAG                | Tag to filter AKTIN requests by                                                                                                                                                      | "test"                         |
+| SFTP     | HOST               | SFTP server address                                                                                                                                                                  | "127.0.0.1"                    |
+|          | PORT               | SFTP port                                                                                                                                                                            | "22"                           |
+|          | USERNAME           | SFTP username                                                                                                                                                                        | "user"                         |
+|          | PASSWORD           | SFTP password                                                                                                                                                                        | "pass"                         |
+|          | TIMEOUT            | Connection timeout (seconds)                                                                                                                                                         | "25"                           |
+|          | FOLDER             | Target upload directory on SFTP server                                                                                                                                               | "test"                         |
+| RSCRIPT  | LOS_SCRIPT_PATH    | Absolute path to LOSCalculator.R                                                                                                                                                     | "/path/to/LOSCalculator.R"     |
+|          | LOS_MAX            | Maximum Length Of Stay threshold before a case is excluded from calculation                                                                                                          | "30"                           |
+|          | ERROR_MAX          | Maximum percentage of excluded cases allowed for a hospital before it is excluded from the calculation                                                                               | "0.05"                         |
+|          | CLINIC_NUMS        | Defines the whitelist of clinic IDs for Rscript processing, supporting both individual IDs and ranges                                                                                | "1-7,9,10-12"                  |
+| -        | REQUESTS_CA_BUNDLE | (optional) Specifies the path to a custom Certificate Authority (CA) bundle file that enables secure HTTPS connections to servers using non-standard or self-signed SSL certificates | "path/to/ca-bundle"            |
 
 ## Usage
 

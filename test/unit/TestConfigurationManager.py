@@ -55,6 +55,11 @@ CLINIC_NUMS="1-5,7,9-10"
 
 
 @pytest.fixture
+def valid_toml_with_ca_bundle(valid_toml_content) -> str:
+  return 'REQUESTS_CA_BUNDLE = "/path/to/ca-bundle"\n' + valid_toml_content
+
+
+@pytest.fixture
 def invalid_toml_content() -> str:
   return """
 [BROKER]
@@ -64,12 +69,14 @@ API_KEY = "test-key"
 
 
 @pytest.fixture
-def config_paths(valid_toml_content, invalid_toml_content, tmp_path) -> dict:
+def config_paths(valid_toml_content, valid_toml_with_ca_bundle, invalid_toml_content, tmp_path) -> dict:
   valid_path = tmp_path / "valid.toml"
-  invalid_path = tmp_path / "invalid.toml"
   valid_path.write_text(valid_toml_content)
+  valid_with_ca_path = tmp_path / "valid_with_ca.toml"
+  valid_with_ca_path.write_text(valid_toml_with_ca_bundle)
+  invalid_path = tmp_path / "invalid.toml"
   invalid_path.write_text(invalid_toml_content)
-  return {'valid': valid_path, 'invalid': invalid_path}
+  return {'valid': valid_path, 'valid_with_ca': valid_with_ca_path, 'invalid': invalid_path}
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +86,7 @@ def cleanup_env():
   """
   yield
   env_prefixes = ['BROKER', 'REQUESTS', 'SFTP', 'MISC', 'RSCRIPT']
-  keys_to_remove = [key for key in os.environ if any(key.startswith(prefix) for prefix in env_prefixes)]
+  keys_to_remove = [key for key in os.environ if any(key.startswith(prefix) for prefix in env_prefixes) or key == 'REQUESTS_CA_BUNDLE']
   for key in keys_to_remove:
     del os.environ[key]
 
@@ -89,6 +96,13 @@ def test_valid_config_loads_successfully(config_paths):
   assert os.environ['BROKER.URL'] == 'test-url'
   assert os.environ['SFTP.HOST'] == 'test-host'
   assert os.environ['RSCRIPT.CLINIC_NUMS'] == '1,2,3,4,5,7,9,10'
+  assert 'REQUESTS_CA_BUNDLE' not in os.environ
+
+
+def test_valid_config_with_ca_bundle_loads_successfully(config_paths):
+  ConfigurationManager(config_paths['valid_with_ca'])
+  assert os.environ['REQUESTS_CA_BUNDLE'] == '/path/to/ca-bundle'
+  assert os.environ['BROKER.URL'] == 'test-url'
 
 
 def test_missing_file_raises_error():
