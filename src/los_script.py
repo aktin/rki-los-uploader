@@ -349,6 +349,7 @@ class LosProcessor:
       zipped_data = self.__result_manager.zip_result_file(renamed_data)
       self.__clean_and_upload_sftp(zipped_data)
       self.__result_manager.clear_rscript_data(zipped_data)
+      os.remove(raw_data_zip)
     except Exception as e:
       logging.error(f"Error during LOS processing: {e}", exc_info=True)
       raise
