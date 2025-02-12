@@ -1,0 +1,10 @@
+{
+  "name": "LOS Script",
+  "image": "mcr.microsoft.com/devcontainers/base:jammy",
+  "postCreateCommand": "bash ./.devcontainer/postCreateCommand.sh",
+  "customizations": {
+    "backend": "PyCharm"
+  },
+}
+// TODO docker mount for unit tests
+// TODO auto setting of python interpreter

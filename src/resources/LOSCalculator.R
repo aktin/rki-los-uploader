@@ -1,13 +1,26 @@
-#### BMG Pandemieradar NEU ####
-required_packages <- c("conflicted", "dplyr", "readr", "tidyverse", "lubridate", "mosaic", "ISOweek", "r2r")
+#' Copyright (c) 2025 AKTIN
+#'
+#' This program is free software: you can redistribute it and/or modify
+#' it under the terms of the GNU Affero General Public License as
+#' published by the Free Software Foundation, either version 3 of the
+#' License, or (at your option) any later version.
+#'
+#' This program is distributed in the hope that it will be useful,
+#' but WITHOUT ANY WARRANTY; without even the implied warranty of
+#' MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#' GNU Affero General Public License for more details.
+#'
+#' You should have received a copy of the GNU Affero General Public License
+#' along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# install all required packages
-for (package_name in required_packages) {
-  if (!require(package_name, character.only = TRUE)){
-    install.packages(package_name)
-    library(package_name, character.only = TRUE)
-  } 
-}
+library(conflicted)
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(mosaic)
+library(ISOweek)
+library(r2r)
 
 conflicts_prefer(mosaic::max)
 conflicts_prefer(mosaic::mean)
@@ -22,7 +35,6 @@ conflicts_prefer(dplyr::filter)
 unpackZip <- function(inDir, exDir) {
   tryCatch({
     unzip(inDir, exdir = exDir)
-    # print(paste("Data from", inDir, "successfully unpacked in:", exDir))
     return(exDir)
   }, error = function(e) {
     warning(paste("An error occurred unpacking the data:", e$message))
@@ -44,7 +56,6 @@ unpackClinicResult <- function(exDir, file_numbers) {
     }
     tryCatch({
       unzip(path_zipped, exdir = path_unzipped)
-      #print(paste("Data from", path_zipped," successfully unpacked in:", path_unzipped))
     }, error = function(e) {
       warning(paste("An error occurred unpacking the result sets:", e$message))
     })
@@ -72,21 +83,22 @@ processFiles <- function(exDir, file_numbers) {
         trim_ws = TRUE
       ) %>% mutate(clinic = i)
 
-      if(!discharge_col_name %in% colnames(df)) {
+      if(!"entlassung_ts" %in% colnames(df)) {
         print(sprintf("Klinik %d besitzt keine Entlassungsspalte, die mit der Namensgebung in der Konfiguration übereinstimmt!", i))
         next
       }
 
-      if(!admittance_col_name %in% colnames(df)) {
-        df$aufnahme_ts <- NA
+     if(!"aufnahme_ts" %in% colnames(df)) {
+        df$aufnahme_ts <- as.POSIXct(NA, tz = "UTC")
       }
 
-      if(!triage_col_name %in% colnames(df)) {
-        df$triage_ts <- NA
+      if(!"triage_ts" %in% colnames(df)) {
+        df$triage_ts <- as.POSIXct(NA, tz = "UTC")
       }
 
       # Remove all rows where triage and aufnahme (admittance) is NA
       df <- df[!(is.na(df$triage_ts) & is.na(df$aufnahme_ts)), ]
+      df$aufnahme_ts[is.na(df$aufnahme_ts)] <- df$triage_ts[is.na(df$aufnahme_ts)]
       all_data_df <- rbind(all_data_df, df)
     } else {
       print(paste("No file found: ", filepath_i))
@@ -112,7 +124,7 @@ performAnalysis <- function(case_data) {
   db <- filterCases(filledCaseData)
   los <- filterLos(db)
   los_valid <- filterLosValid(los, num_of_cases)
-  complete_db_Pand <- joinClinics(db, los_valid)
+  complete_db_Pand <- left_join(los_valid, db)
   timeframe <- calculateTimeframe(complete_db_Pand, los)
   return(timeframe)
 }
@@ -183,9 +195,6 @@ filterLos <- function(db) {
 #' @param num_of_cases: clinic numbers
 filterLosValid <- function(los, num_of_cases) {
   los <- left_join(los, num_of_cases, by="clinic")
-  for(i in 1:nrow(los)) {
-    los$Freq[los$clinic==i] <- los$Freq[los$clinic==i]
-  }
   los$np <- los$Freq - los$n
   los$np_prozent <- (los$np / los$Freq) * 100
   los <- los %>% dplyr::filter(np_prozent < max_accepted_error)
@@ -196,25 +205,27 @@ filterLosValid <- function(los, num_of_cases) {
   return(los)
 }
 
-joinClinics <- function(db, los_valid) {
-  complete_db_Pand <- left_join(los_valid, db)
-  complete_db_Pand <- complete_db_Pand %>% dplyr::filter(clinic != 46)
-  return(complete_db_Pand)
-}
-
 calculateTimeframe <- function(complete_db_Pand, los) {
   clinics <- complete_db_Pand %>% group_by(calendarweek_year, cw) %>% summarise(n = length(unique(clinic)))
   timeframe <- complete_db_Pand %>%
     group_by(calendarweek_year, cw) %>%
-    summarise(weighted_los = weighted.mean(los,clinic))
+    summarise(weighted_los = weighted.mean(los, clinic, na.rm = TRUE))
   case_num <- calculateCaseNumber(complete_db_Pand)
   timeframe  <- left_join(timeframe, case_num)
   timeframe$LOS_vor_Pand <- 193.5357
   timeframe$Abweichung <- timeframe$weighted_los - timeframe$LOS_vor_Pand
   timeframe <- mutate(timeframe, Veraenderung = ifelse(Abweichung > 0, "Zunahme", "Abnahme"))
   timeframe <- left_join(timeframe, clinics)
-  calendarweek <- getFirstCalendarWeekOfCurrentMonth()
-  timeframe <- timeframe %>% dplyr::filter(last_cw_last_month < cw & cw < first_cw_next_month)# todo rework, why only last and not second last, why manually. maybe a whitelist approach?
+  timeframe$calendarweek_year <- as.numeric(timeframe$calendarweek_year)
+  timeframe$cw <- as.numeric(timeframe$cw)
+  conflicts_prefer(base::min)
+
+  # filter all cases after start cw
+  timeframe <- timeframe %>% filter(calendarweek_year > start_year | (calendarweek_year == start_year & cw >= start_cw_last_month))
+  # filter all cases before end cw
+  timeframe <- timeframe %>% filter(calendarweek_year < end_year | (calendarweek_year == end_year & cw <= end_cw_next_month))
+
+  timeframe$cw <- sprintf("%02d", timeframe$cw)
   timeframe$date <- paste(timeframe$calendarweek_year, "-W", timeframe$cw, sep = "")
   timeframe <- timeframe[, -c(1, 2)]
   colnames(timeframe) <- c("los_mean", "visit_mean", "los_reference", "los_difference", "change", "ed_count", "date")
@@ -260,7 +271,6 @@ removeTrailingFileFromPath <- function(filepath, regex) {
   index <- max(gregexpr(regex, filepath)[[1]])
   if (index > 1) {
     exDir <- substr(filepath, 1, index - 1)
-    #print(exDir)
     return(exDir)
   } else {
     print(paste("Kein'", regex, "'gefunden."))
@@ -273,31 +283,25 @@ tablenameToEng <- function(var) {
   return(m[var])
 }
 
-getHospitalNumbers <- function(path) {
-  file_list <- list.files(path = path)
-  zip_files <- file_list[grep("\\.zip", file_list)]
-  hospital_numbers <- list()
-  for(filename in zip_files) {
-    hospital_numbers <- c(hospital_numbers, as.numeric(strsplit(filename, "_")[[1]][1]))
-  }
-  return(hospital_numbers)
-}
-
+start_cw_last_month <- NULL
+end_cw_next_month <- NULL
+start_year <- NULL
+end_year <- NULL
+max_accepted_los <- NULL
+max_accepted_error <- NULL
 
 main <- function(){
     args <- commandArgs(trailingOnly=TRUE)
     # Access the path variable passed from Python
     filepath <- args[1]
-    last_cw_last_month <- args[2]
-    first_cw_next_month <- args[3]
-
-    max_accepted_los <- args[4] # in min, used to exclude data sources with an mean length of stay of i mins and higher
-    max_accepted_error <- args[5] # in %, used to exclude data sources with an error rate of i% or higher
-
-    discharge_col_name <- args[6] # name of the discharge column from broker export data
-    admittance_col_name <- args[7] # name of the admittance column from broker export data
-    triage_col_name <- args[8]
-    
+    assign("start_year", as.numeric(args[2]), envir = .GlobalEnv)
+    assign("start_cw_last_month", as.numeric(args[3]), envir = .GlobalEnv)
+    assign("end_year", as.numeric(args[4]), envir = .GlobalEnv)
+    assign("end_cw_next_month", as.numeric(args[5]), envir = .GlobalEnv)
+    assign("max_accepted_los", as.numeric(args[6]), envir = .GlobalEnv) # in min, used to exclude data sources with an mean length of stay of i mins and higher
+    assign("max_accepted_error", as.numeric(args[7]), envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
+    assign("file_numbers", args[8], envir = .GlobalEnv) # in %, used to exclude data sources with an error rate of i% or higher
+    file_numbers <- as.integer(unlist(strsplit(file_numbers, ",")))
     # Path to extraction location, regex on win: '\\\\' and linux '/'
     exDir <- paste0(removeTrailingFileFromPath(filepath, '/'),"/broker_result")
 
@@ -310,21 +314,19 @@ main <- function(){
     }
 
     unpackZip(filepath, exDir)
-    file_numbers <- getHospitalNumbers(exDir)
     unpackClinicResult(exDir, file_numbers)
     case_data <- processFiles(exDir, file_numbers)
     if(!is.null(case_data)) {
       timeframe <- performAnalysis(case_data)
     } else {
-      timeframe <- data.frame("Error" = {"No Data found in case_data files!"})
+      timeframe <- data.frame(message = "Error: No Data found in case_data files!")
     print("case_data is NULL, check the given table for missing columns.")
-    }
-    
-    # save analysis result
-    timeframe_path <- paste0(exDir, "/timeframe.csv")
-    write.csv(timeframe, timeframe_path, row.names = FALSE)
-    print(paste0("timeframe_path:",timeframe_path))
+  }
+
+  # save analysis result
+  timeframe_path <- paste0(exDir, "/timeframe.csv")
+  write.csv(timeframe, timeframe_path, row.names = FALSE, quote = FALSE)
+  print(paste0("timeframe_path:",timeframe_path))
 }
 
 main()
-

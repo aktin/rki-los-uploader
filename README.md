@@ -1,55 +1,63 @@
-# REad data in mysql
-1. create table:
-CREATE TABLE ed_data (
-aufnahme_ts varchar(255),
-entlassung_ts varchar(255),
-triage_ts varchar(255),
-a_encounter_num	varchar(255),
-a_encounter_ide	varchar(255),
-a_billing_ide varchar(255)
-);
-2. SHOW GLOBAL VARIABLES LIKE 'local_infile';
-3. SET GLOBAL local_infile = 'ON';
-4. GRANT FILE on *.* to user@'localhost'
-5. LOAD DATA LOCAL INFILE 'path/test_data.txt' INTO TABLE ed_data;
+# rki-los-uploader ![Python 3.10.12](https://img.shields.io/badge/python-3.10.12-blue) ![R 4.1.2](https://img.shields.io/badge/R-4.1.2-red)
 
-Loads the data from the own system
+A script that downloads case data from connected AKTIN emergency departments and calculates the average Length of Stay (LOS) data. Results are
+uploaded to an SFTP server for accessibility and further processing by a third party.
 
+## Overview
 
-## Important
-Calculator reads UTC Timezones and converts them into current timezone for calculation
+![Activity Diagram](docs/activity_diagram.png)
 
+## Installation
 
-## Verfahren
-### Einlesen
-1. Daten aus den Dateien einlesen
-2. Daten prüfen ob nicht leer (nicht notwendig durch mysql?)
-3. Daten zusammenführen zu einer Tabelle
-4. Neue SPalte "Klinik" mit kliniknummer aus dateinamen
-### Daten aufbereiten
-4. Daten und Uhrzeiten nach zeitzonen umformatieren zur aktuellen Zeitzone (wird mit timestamp beim einlesen automatisch gemacht?)
-### Spalte für Jahr, Kalenderwoche und Kalenderwoche Jahr hinzufügen
-5. Aus spalte "aufnahme_ts" das Jahr, die Kalenderwoche und jahr der kalenderwoche (???) extrahieren
-### Spalte für ersterZ erstellen (wahrscheinlich redundant mit ersterZeiptunkt)
-6. Neue Spalte "ersterZ", mit wert 1 wenn "aufnahme_ts" > "triage_ts" sonst 0
-### Spalte vergleich erstellen
-7. Spalte "vergleich" erstellen
-8. wenn die Zelle in "triage_ts" "null" oder leer ist, dann 0 in spalte "vergleich" eintragen für diese Zeile
-9. sonst: 1 wenn aufnahme_ts > triage_ts
-### Spalte ersterZeitpunkt erstellen
-10. Spalte "ersterZeitpunkt" erstellen (möglicherweise mit _ts markieren?)
-11. Trage den timestamp ein aus "aufnahme_ts" und "triage_ts" der früher ist
-12. wenn triage_ts null ist, aufnahme_ts direkt nehmen
-### LOS spalte erstellen
-13. Differenz zwischen "entlassungs_ts" und "ersterZeitpunkt" errechnen
+**Prerequisites** : Python and R
 
+1. Install Python dependencies ([requirements.txt](requirements.txt)):
 
+```bash
+pip install -r requirements.txt
+```
 
+2. Install R dependencies ([requirements.R](requirements.R)):
 
-spalte Vergleich ausgelassen weil quasi dasselbe wie ersterZ
+```bash
+R -f requirements.R
+```
 
+If you encounter problems installing the R packages, some further packages may be required, i.e. on Ubuntu 20.04:
 
+```
+libxml2-dev libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev libpng-dev libtiff5-dev libjpeg-dev libcurl4-openssl-dev libssl-dev libgit2-dev libsodium-dev libcairo2-dev libxt-dev
+```
 
+3. Add R to PATH:
 
+```bash
+export PATH=$PATH:/usr/lib/R
+```
 
+## Configuration
 
+Create a `config.toml` outside project directory:
+
+| Section  | Key                | Description                                                                                                                                                                          | Example                        |
+|----------|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------|
+| BROKER   | URL                | URL to AKTIN Broker                                                                                                                                                                  | "localhost:8080/aktin-broker/" |
+| BROKER   | API_KEY            | Admin Authentication key                                                                                                                                                             | "api_key"                      |
+| REQUESTS | TAG                | Tag to filter AKTIN requests by                                                                                                                                                      | "test"                         |
+| SFTP     | HOST               | SFTP server address                                                                                                                                                                  | "127.0.0.1"                    |
+| SFTP     | PORT               | SFTP port                                                                                                                                                                            | "22"                           |
+| SFTP     | USERNAME           | SFTP username                                                                                                                                                                        | "user"                         |
+| SFTP     | PASSWORD           | SFTP password                                                                                                                                                                        | "pass"                         |
+| SFTP     | TIMEOUT            | Connection timeout (seconds)                                                                                                                                                         | "25"                           |
+| SFTP     | FOLDER             | Target upload directory on SFTP server                                                                                                                                               | "test"                         |
+| RSCRIPT  | LOS_SCRIPT_PATH    | Absolute path to LOSCalculator.R                                                                                                                                                     | "/path/to/LOSCalculator.R"     |
+| RSCRIPT  | LOS_MAX            | Maximum Length Of Stay threshold before a case is excluded from calculation                                                                                                          | "30"                           |
+| RSCRIPT  | ERROR_MAX          | Maximum percentage of excluded cases allowed for a hospital before it is excluded from the calculation                                                                               | "0.05"                         |
+| RSCRIPT  | CLINIC_NUMS        | Defines the whitelist of clinic IDs for Rscript processing, supporting both individual IDs and ranges                                                                                | "1-7,9,10-12"                  |
+| -        | REQUESTS_CA_BUNDLE | (optional) Specifies the path to a custom Certificate Authority (CA) bundle file that enables secure HTTPS connections to servers using non-standard or self-signed SSL certificates | "path/to/ca-bundle"            |
+
+## Usage
+
+```bash
+python3 /path/to/los_script.py /path/to/config.toml
+```
