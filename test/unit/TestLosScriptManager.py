@@ -134,7 +134,7 @@ def test_no_column_aufnahme_ts(los_manager: LosScriptManager, test_zip_path: Pat
   assert compare_results(los_manager, test_zip_path, start_end_cw, test_data, expected)
 
 
-def test_no_column_entlassung_ts(los_manager: LosScriptManager, test_zip_path: Path, start_end_cw: tuple[str, str, str, str],):
+def test_no_column_entlassung_ts(los_manager: LosScriptManager, test_zip_path: Path, start_end_cw: tuple[str, str, str, str]):
   test_data = ["triage_ts\ta_encounter_num\ta_encounter_ide\ta_billing_ide\n"
                "2023-07-28T21:55:36Z\t4\t4\t4\n"
                "2023-07-28T22:21:09Z\t5\t5\t5\n"
@@ -150,3 +150,13 @@ def test_turn_of_the_year(los_manager: LosScriptManager, test_zip_path: Path):
   expected = [["date", "ed_count", "visit_mean", "los_mean", "los_reference", "los_difference", "change"],
           ["2023-W52", "1", "3", "70.87", "193.54", "-122.66", "Abnahme"]]
   assert compare_results(los_manager, test_zip_path, ("2023", "50", "2024", "03"), test_data, expected)
+
+def test_clinic_nodata(los_manager: LosScriptManager, test_zip_path: Path, start_end_cw: tuple[str, str, str, str],
+                       standard_expected_data):
+    test_data = [("aufnahme_ts\tentlassung_ts\ttriage_ts\ta_encounter_num\ta_encounter_ide\ta_billing_ide\n"
+          "2023-07-28T21:55:36Z\t2023-07-28T23:02:49Z\t2023-07-28T21:58:08Z\t4\t4\t4\n"
+          "2023-07-28T22:21:09Z\t2023-07-28T23:37:27Z\t2023-07-28T22:21:49Z\t5\t5\t5\n"
+          "2023-07-28T23:46:09Z\t2023-07-29T00:55:15Z\t2023-07-28T23:47:20Z\t6\t6\t6"),
+                 ("aufnahme_ts\tentlassung_ts\ttriage_ts\ta_encounter_num\ta_encounter_ide\ta_billing_ide\n")]
+    expected = standard_expected_data("1")
+    assert compare_results(los_manager, test_zip_path, start_end_cw, test_data, expected)
