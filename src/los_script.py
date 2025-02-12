@@ -4,21 +4,20 @@
 """
 
 #
-#      Copyright (c) 2025 AKTIN
+#  Copyright (c) 2025 AKTIN
 #
-#      This program is free software: you can redistribute it and/or modify
-#      it under the terms of the GNU Affero General Public License as
-#      published by the Free Software Foundation, either version 3 of the
-#      License, or (at your option) any later version.
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as
+#  published by the Free Software Foundation, either version 3 of the
+#  License, or (at your option) any later version.
 #
-#      This program is distributed in the hope that it will be useful,
-#      but WITHOUT ANY WARRANTY; without even the implied warranty of
-#      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#      GNU Affero General Public License for more details.
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
 #
-#      You should have received a copy of the GNU Affero General Public License
-#      along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
 import datetime
@@ -48,6 +47,7 @@ class ConfigurationManager:
 
   Attributes:
       __required_keys (set): Set of configuration keys that must be present
+      __optional_keys (set): Set of optional configuration keys
   """
 
   __required_keys = {
@@ -56,6 +56,8 @@ class ConfigurationManager:
     'SFTP.HOST', 'SFTP.PORT', 'SFTP.USERNAME', 'SFTP.PASSWORD', 'SFTP.TIMEOUT', 'SFTP.FOLDER',
     'RSCRIPT.LOS_SCRIPT_PATH', 'RSCRIPT.LOS_MAX', 'RSCRIPT.ERROR_MAX', 'RSCRIPT.CLINIC_NUMS'
   }
+
+  __optional_keys = {'REQUESTS_CA_BUNDLE'}
 
   def __init__(self, path_toml: Path):
     self.__verify_and_load_toml(path_toml)
@@ -91,10 +93,12 @@ class ConfigurationManager:
     missing_keys = self.__required_keys - loaded_keys
     if missing_keys:
       raise SystemExit(f'Missing keys in config file: {missing_keys}')
-    for key, value in config.items():
-      if key == 'RSCRIPT.CLINIC_NUMS':
-        value = self.__parse_clinic_nums(value)
-      os.environ[key] = str(value)
+    for key in self.__required_keys | self.__optional_keys:
+      if key in config:
+        value = config[key]
+        if key == 'RSCRIPT.CLINIC_NUMS':
+          value = self.__parse_clinic_nums(value)
+        os.environ[key] = str(value)
 
   def __parse_clinic_nums(self, ranges_str: str):
     ranges = (r.split('-') for r in ranges_str.split(','))
@@ -350,6 +354,7 @@ class LosProcessor:
       zipped_data = self.__result_manager.zip_result_file(renamed_data)
       self.__clean_and_upload_sftp(zipped_data)
       self.__result_manager.clear_rscript_data(zipped_data)
+      os.remove(raw_data_zip)
     except Exception as e:
       logging.error(f"Error during LOS processing: {e}", exc_info=True)
       raise
