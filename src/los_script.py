@@ -4,7 +4,7 @@
 """
 
 #
-#  Copyright (c) 2025 AKTIN
+#  Copyright (c) 2024 AKTIN
 #
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU Affero General Public License as
@@ -135,6 +135,14 @@ class SftpFileManager:
         look_for_keys=False
     )
     return ssh.open_sftp()
+
+  def __del__(self):
+    try:
+      if self.__connection:
+        self.__connection.close()
+        logging.info('SFTP connection closed.')
+    except Exception as e:
+      logging.error('Error closing SFTP connection: %s', e)
 
   def upload_file(self, path_file: Path):
     path_file = Path(path_file).resolve()
